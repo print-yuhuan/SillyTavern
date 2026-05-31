@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- App 展示名称（品牌名，桌面图标 / 通知 / 系统设置） -->
+    <string name="app_name">SillyTavern</string>
+
+    <!-- ── 通知渠道 ────────────────────────────────────────────── -->
+    <string name="notification_channel_service_name">SillyTavern 服务</string>
+    <string name="notification_channel_service_desc">显示 SillyTavern 本地服务的运行状态与控制操作</string>
+    <string name="notification_running_title">SillyTavern 正在运行</string>
+    <string name="notification_starting_title">SillyTavern 正在启动…</string>
+    <string name="notification_stopping_title">SillyTavern 正在停止…</string>
+    <string name="notification_stopped_title">SillyTavern 已停止</string>
+    <string name="notification_error_title">SillyTavern 出错</string>
+    <string name="notification_action_stop">停止服务</string>
+    <string name="notification_address_format">监听地址：%1$s</string>
+
+    <!-- ── 服务状态 ────────────────────────────────────────────── -->
+    <string name="state_stopped">已停止</string>
+    <string name="state_starting">启动中</string>
+    <string name="state_running">运行中</string>
+    <string name="state_stopping">停止中</string>
+    <string name="state_error">出错</string>
+
+    <!-- ── 首页 ────────────────────────────────────────────────── -->
+    <string name="home_title">SillyTavern</string>
+    <string name="home_settings">设置</string>
+    <string name="home_status_label">状态</string>
+    <string name="home_address_label">监听地址</string>
+    <string name="home_uptime_label">运行时长</string>
+    <string name="home_recent_logs">最近日志</string>
+    <string name="home_no_address">尚未就绪</string>
+    <string name="home_uptime_zero">00:00:00</string>
+
+    <string name="action_start">启动服务</string>
+    <string name="action_stop">停止服务</string>
+    <string name="action_cancel">取消</string>
+    <string name="action_open_web">打开界面</string>
+    <string name="action_edit_config">修改配置</string>
+    <string name="action_view_logs">查看日志</string>
+    <string name="action_check_update">检查更新</string>
+    <string name="action_backup">备份 / 恢复</string>
+
+    <!-- ── 日志页 ──────────────────────────────────────────────── -->
+    <string name="logs_title">运行日志</string>
+    <string name="logs_copy">复制日志</string>
+    <string name="logs_clear">清空日志</string>
+    <string name="logs_empty">暂无日志</string>
+    <string name="logs_copied">日志已复制到剪贴板</string>
+
+    <!-- ── WebView ─────────────────────────────────────────────── -->
+    <string name="web_title">SillyTavern</string>
+    <string name="web_reload">刷新</string>
+    <string name="web_open_external">用浏览器打开</string>
+    <string name="web_back">返回</string>
+    <string name="web_loading">正在加载…</string>
+    <string name="web_not_ready">服务尚未就绪，请先在首页启动服务</string>
+
+    <!-- ── M0 真机验证说明 ─────────────────────────────────────── -->
+    <string name="m0_banner">M0 验证版：仅验证内置 Node 能否在真机从 nativeLibraryDir 启动并联通本机端口</string>
+
+    <!-- ── 通用提示 ────────────────────────────────────────────── -->
+    <string name="msg_start_failed">服务启动失败，请查看日志</string>
+    <string name="msg_node_missing">未找到内置 Node（libnode.so），该 APK 可能未正确打包</string>
+    <string name="msg_battery_hint">为避免后台被系统杀死，建议为本应用关闭电池优化</string>
+
+    <!-- ── 无障碍描述 ──────────────────────────────────────────── -->
+    <string name="cd_status_indicator">当前服务状态指示</string>
+    <string name="cd_start">启动 SillyTavern 本地服务</string>
+    <string name="cd_stop">停止 SillyTavern 本地服务</string>
+    <string name="cd_open_web">在内置浏览器中打开 SillyTavern 界面</string>
+    <string name="cd_settings">打开设置</string>
+    <string name="cd_logs">查看运行日志</string>
+    <string name="cd_reload">重新加载页面</string>
+    <string name="cd_open_external">用系统浏览器打开当前地址</string>
+    <string name="cd_back">返回上一页</string>
+</resources>

@@ -1,0 +1,61 @@
+# ── 本地参考样本：绝不提交 / 绝不打包进 App ──────────────────────────────
+# D:\SillyTavern\SillyTavern 是编写方案时的上游源码克隆，仅供参考。
+# 实际构建源码来自 third_party/SillyTavern submodule。
+/SillyTavern/
+
+# ── CI 生成物：不入库，由 GitHub Actions 在构建时产出 ─────────────────────
+# 内置 Node（统一从 Android-Node-Builder 的 Release 下载到此目录）
+android-app/src/main/jniLibs/
+# 由 packaging/package-sillytavern.sh 打包的 SillyTavern 资产与版本元数据
+# 注意：assets/m0-server.js 是手写测试资产，需保留入库（故只忽略 *.zip 与 version.json）
+android-app/src/main/assets/*.zip
+android-app/src/main/assets/version.json
+# packaging 脚本的扫描日志与中间产物
+packaging/native-addons-scan.txt
+packaging/_work/
+packaging/out/
+# build-apk.yml 在仓库根暂存重命名后的 APK
+/out/
+
+# ── libnode 安全网：防止本机 Node 产物被误提交（统一从 ANB Release 获取）──
+/libnode-*.zip
+*.so
+*.so.sha256
+
+# ── Gradle / Android ─────────────────────────────────────────────────────
+# 说明：gradle/wrapper/gradle-wrapper.jar 需入库以支持 ./gradlew，故不设 *.jar 规则。
+.gradle/
+.kotlin/
+build/
+local.properties
+captures/
+.cxx/
+*.apk
+*.aab
+*.ap_
+*.dex
+*.hprof
+
+# ── 签名密钥：绝不入库（CI 通过 Secrets 注入） ───────────────────────────
+*.keystore
+*.jks
+*.p12
+keystore.properties
+
+# ── Node / npm ───────────────────────────────────────────────────────────
+node_modules/
+npm-debug.log*
+
+# ── IDE / 编辑器 ─────────────────────────────────────────────────────────
+.idea/
+*.iml
+.vscode/
+
+# ── 系统 / 其它 ──────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+*.log
+*.tmp
+*~

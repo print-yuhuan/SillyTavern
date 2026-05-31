@@ -1,0 +1,181 @@
+name: Build APK
+
+# 触发规则：
+# - push v* Tag        → 构建 release 包、签名、发布到 GitHub Releases（实现方案 §12）
+# - push 分支 / PR / 手动 → 仅构建 debug 包并作为 workflow artifact（M0 真机验证用，不发布 Release）
+on:
+  push:
+    branches: [main, master]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  # 让 JS actions 运行在 Node.js 24（消除 actions 的 Node 20 弃用告警）
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  NODE_VERSION: "24.16.0"
+  ANDROID_API: "28"
+  ABI: "arm64-v8a"
+  # libnode.so 来源：Android-Node-Builder 的 Release（已发布 libnode.so + libnode.so.sha256）。
+  # 与 third_party/Android-Node-Builder/ 子模块锁定的 tag 保持一致。
+  ANB_REPO: "print-yuhuan/Android-Node-Builder"
+  ANB_RELEASE_TAG: "v1.0.0"
+
+jobs:
+  build:
+    name: Build Android arm64 APK
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout (含 submodules)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: 判定构建类型
+        id: vars
+        run: |
+          set -eux
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            echo "is_release=true" >> "$GITHUB_OUTPUT"
+            echo "version_name=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_release=false" >> "$GITHUB_OUTPUT"
+            echo "version_name=0.0.0-ci" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: 安装 JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: 安装 Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: 安装所需 SDK 组件
+        run: |
+          set -eux
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-36" "build-tools;35.0.0" "platform-tools"
+
+      # ── libnode.so 准备：实现方案 §2/§12 ────────────────────────────────
+      # 来源：Actions cache → Android-Node-Builder 的 Release（统一渠道）。
+      # CI 不读取本机 D:\ 路径；libnode.so 由 Android-Node-Builder 的 build-libnode.yml 构建并随 Release 发布。
+      - name: 恢复 libnode 缓存
+        id: libnode-cache
+        uses: actions/cache@v4
+        with:
+          path: android-app/src/main/jniLibs/${{ env.ABI }}
+          key: libnode-${{ env.NODE_VERSION }}-api${{ env.ANDROID_API }}-${{ env.ABI }}-anb-${{ env.ANB_RELEASE_TAG }}
+
+      - name: 下载 libnode.so（缓存未命中）
+        if: steps.libnode-cache.outputs.cache-hit != 'true'
+        run: |
+          set -eux
+          dest="android-app/src/main/jniLibs/${{ env.ABI }}"
+          mkdir -p "$dest"
+          anb="https://github.com/${ANB_REPO}/releases/download/${ANB_RELEASE_TAG}"
+          if ! curl -fSL "${anb}/libnode.so" -o "$dest/libnode.so"; then
+            echo "::error::无法从 ${ANB_REPO} 的 ${ANB_RELEASE_TAG} Release 下载 libnode.so，请确认该 Release 已发布该资产。"
+            exit 1
+          fi
+          curl -fSL "${anb}/libnode.so.sha256" -o "$dest/libnode.so.sha256" || true
+          echo "libnode 来源：${ANB_REPO}@${ANB_RELEASE_TAG}"
+
+      - name: 校验 libnode.so 的 sha256
+        run: |
+          set -eux
+          dest="android-app/src/main/jniLibs/${{ env.ABI }}"
+          test -f "$dest/libnode.so"
+          if [[ -f "$dest/libnode.so.sha256" ]]; then
+            expected="$(awk '{print $1}' "$dest/libnode.so.sha256")"
+            actual="$(sha256sum "$dest/libnode.so" | awk '{print $1}')"
+            echo "expected=$expected actual=$actual"
+            test "$expected" = "$actual"
+          else
+            echo "::warning::缺少 libnode.so.sha256，跳过校验。"
+          fi
+          file "$dest/libnode.so" || true
+
+      # ── 打包完整 SillyTavern 资产（第三/四阶段接入后启用） ─────────────────
+      # 目前 App 仅消费 assets/m0-server.js 验证 M0；完整资产打包脚本已就绪，
+      # 待 NodeService 切换到真实 server.js 后，将此步骤改为在 release 时执行。
+      - name: 打包 SillyTavern 资产（占位，默认跳过）
+        if: ${{ false }}
+        run: bash packaging/package-sillytavern.sh
+
+      - name: 准备签名 keystore（仅 release，且已配置 secret）
+        id: signing
+        if: steps.vars.outputs.is_release == 'true'
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          set -eu
+          if [[ -n "${ANDROID_KEYSTORE_BASE64:-}" ]]; then
+            echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+            echo "keystore_path=$RUNNER_TEMP/release.keystore" >> "$GITHUB_OUTPUT"
+            echo "已解码 release keystore"
+          else
+            echo "::warning::未配置 ANDROID_KEYSTORE_BASE64，release 包将回退 debug 签名（仅用于验证，勿作正式发布）。"
+          fi
+
+      - name: 赋予 gradlew 可执行权限
+        run: chmod +x ./gradlew
+
+      - name: 构建 APK
+        env:
+          ST_APP_VERSION_NAME: ${{ steps.vars.outputs.version_name }}
+          ST_APP_VERSION_CODE: ${{ github.run_number }}
+          ANDROID_KEYSTORE_PATH: ${{ steps.signing.outputs.keystore_path }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -eux
+          if [[ "${{ steps.vars.outputs.is_release }}" == "true" ]]; then
+            ./gradlew :android-app:assembleRelease --no-daemon --stacktrace
+          else
+            ./gradlew :android-app:assembleDebug --no-daemon --stacktrace
+          fi
+
+      - name: 收集并重命名 APK
+        id: collect
+        run: |
+          set -eux
+          mkdir -p out
+          if [[ "${{ steps.vars.outputs.is_release }}" == "true" ]]; then
+            src="$(find android-app/build/outputs/apk/release -name '*.apk' | head -n1)"
+            name="SillyTavern-android-arm64-v8a-v${{ steps.vars.outputs.version_name }}.apk"
+          else
+            src="$(find android-app/build/outputs/apk/debug -name '*.apk' | head -n1)"
+            name="SillyTavern-android-arm64-v8a-debug-${{ github.run_number }}.apk"
+          fi
+          test -n "$src"
+          cp "$src" "out/$name"
+          echo "apk_path=out/$name" >> "$GITHUB_OUTPUT"
+          echo "apk_name=$name" >> "$GITHUB_OUTPUT"
+
+      - name: 上传 APK 为 workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.collect.outputs.apk_name }}
+          path: ${{ steps.collect.outputs.apk_path }}
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: 发布到 GitHub Releases（仅 v* Tag）
+        if: steps.vars.outputs.is_release == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eux
+          tag="${GITHUB_REF_NAME}"
+          gh release create "$tag" "${{ steps.collect.outputs.apk_path }}" \
+            --title "$tag" \
+            --notes "SillyTavern Android (arm64-v8a) ${tag}。内置 Node ${NODE_VERSION} / API ${ANDROID_API}。" \
+            || gh release upload "$tag" "${{ steps.collect.outputs.apk_path }}" --clobber

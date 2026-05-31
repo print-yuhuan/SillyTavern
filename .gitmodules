@@ -1,0 +1,6 @@
+[submodule "third_party/SillyTavern"]
+	path = third_party/SillyTavern
+	url = https://github.com/SillyTavern/SillyTavern.git
+[submodule "third_party/Android-Node-Builder"]
+	path = third_party/Android-Node-Builder
+	url = https://github.com/print-yuhuan/Android-Node-Builder.git

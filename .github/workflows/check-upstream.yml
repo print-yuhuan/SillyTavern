@@ -1,0 +1,54 @@
+name: Check Upstream
+
+# 定时检测 SillyTavern 上游最新 Release；若有新版则 bump third_party/SillyTavern
+# 子模块指针并自动开 PR。不直接发版；发版仍由推送 v* Tag 触发 build-apk.yml。
+on:
+  schedule:
+    - cron: "0 6 * * *" # 每日 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+env:
+  # 让 JS actions 运行在 Node.js 24（消除 actions 的 Node 20 弃用告警）
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  check:
+    name: 检测上游新版本
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout（含 submodules）
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: bump 上游子模块到最新 Release
+        id: bump
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash scripts/bump-upstream.sh
+
+      - name: 创建 PR
+        if: steps.bump.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eux
+          tag="${{ steps.bump.outputs.latest_tag }}"
+          branch="upstream/bump-sillytavern-${tag}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git add third_party/SillyTavern
+          git commit -m "chore(upstream): bump SillyTavern 到 ${tag}"
+          git push -u origin "$branch" --force
+          gh pr create \
+            --title "chore(upstream): 升级内置 SillyTavern 到 ${tag}" \
+            --body "自动检测到 SillyTavern 上游新版本 ${tag}，已更新 third_party/SillyTavern 子模块指针。合并后推送 v* Tag 触发打包发布。" \
+            --base main \
+            --head "$branch" || echo "PR 可能已存在，跳过。"
