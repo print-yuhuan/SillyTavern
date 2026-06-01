@@ -9,6 +9,10 @@ on:
   push:
     branches: [main, master]
     tags: ["v*"]
+    # 纯文档提交不触发构建。注：新建的 v* tag 没有 before 提交，
+    # GitHub 不对其套用路径过滤，故发版构建不受此影响，仍照常触发。
+    paths-ignore:
+      - "docs/**"
   pull_request:
   workflow_dispatch:
 

@@ -1,0 +1,388 @@
+# -- 数据配置 --
+# 用户数据存储的根目录
+dataRoot: ./data
+# -- 服务器配置 --
+# 监听传入连接
+listen: false
+# 在指定地址上监听，支持 IPv4 和 IPv6
+listenAddress:
+  ipv4: 0.0.0.0
+  ipv6: '[::]'
+# 启用 IPv6 和/或 IPv4 协议。至少需要启用其中一种！
+# - 使用 "auto" 可自动检测支持情况
+# - 使用 true 或 false（不加引号）分别启用或禁用每种协议
+protocol:
+    ipv4: true
+    ipv6: false
+# DNS 解析优先使用 IPv6。仅在你的 ISP 使用 IPv6 没有问题时启用
+dnsPreferIPv6: false
+# -- 浏览器启动配置 --
+browserLaunch:
+  # 服务器启动时自动打开浏览器。
+  enabled: true
+  # 用于打开 URL 的浏览器。
+  # Android 设备不支持。
+  # - 使用 "default" 表示使用系统默认浏览器
+  # - 可使用 "firefox"、"chrome"、"edge"
+  browser: 'default'
+  # 覆盖自动打开浏览器时使用的主机名。
+  # - 使用 "auto" 表示由服务器决定
+  # - 可使用类似 'localhost'、'st.example.com' 的值
+  hostname: 'auto'
+  # 覆盖自动打开浏览器时使用的端口。
+  # - 使用 -1 表示使用服务器端口。
+  # - 指定端口可覆盖默认值。
+  port: -1
+  # 在 auto 模式下避免使用 'localhost' 作为主机名。
+  # 如果你的 hosts 文件中没有 'localhost'，请启用此项
+  avoidLocalhost: false
+# 服务器端口
+port: 8000
+# 写入心跳文件的间隔秒数。设为 0 可禁用。
+# 主要用于 Docker 健康检查。
+heartbeatInterval: 0
+# 全局启用 HTTP/HTTPS keep-alive。
+# 禁用后会恢复旧版 Node 18 行为；如果出现 ECONNRESET 等网络错误，可能有帮助。
+enableKeepAlive: false
+# -- SSL 选项 --
+ssl:
+  # 启用 SSL/TLS 加密
+  enabled: false
+  # 证书路径（相对于服务器根目录）
+  certPath: "./certs/cert.pem"
+  # 私钥路径（相对于服务器根目录）
+  keyPath: "./certs/privkey.pem"
+  # 私钥密码短语（不需要时留空）
+  # 为提高安全性，请使用 CLI 参数或环境变量（SILLYTAVERN_SSL_KEYPASSPHRASE）
+  keyPassphrase: ""
+# -- 安全配置 --
+# 启用或禁用 IP 白名单模式
+whitelistMode: true
+# 启用后，白名单也会校验 `forwardedHeaders` 部分中已启用请求头里的 IP。
+enableForwardedWhitelist: true
+# 允许访问的 IP 地址白名单
+whitelist:
+  - ::1
+  - 127.0.0.1
+# 自动将 Docker 主机和网关 IP 加入白名单
+whitelistDockerHosts: true
+# 为端点启用或禁用 HTTP Basic 认证
+basicAuthMode: false
+# HTTP Basic 认证凭据
+basicAuthUser:
+  username: "user"
+  password: "password"
+# 启用 CORS 代理中间件
+enableCorsProxy: false
+# CORS 设置（应用于所有路由）
+cors:
+  # 启用或禁用 CORS 中间件
+  enabled: true
+  # 允许的来源。使用 "null" 可匹配浏览器默认的 file:// 来源。
+  # 可设置为 "*" 以允许任意来源，或设置为允许来源列表。
+  origin:
+    - "null"
+  # 允许的请求方法
+  methods:
+    - "OPTIONS"
+  # 允许的请求头（可选）
+  allowedHeaders: []
+  # 暴露给客户端的响应头（可选）
+  exposedHeaders: []
+  # 允许凭据（Cookie、Authorization 请求头）
+  credentials: false
+  # 预检请求缓存的最长秒数（可选）
+  maxAge: null
+# -- 请求代理配置 --
+requestProxy:
+  # 启用代理后，所有外发 HTTP/HTTPS 请求都会经由该代理。
+  enabled: false
+  # 代理 URL。可用协议：http、https、socks、socks5、socks4、pac
+  url: "socks5://username:password@example.com:1080"
+  # 代理绕过列表。发往这些主机的请求不会经由代理。
+  bypass:
+    - localhost
+    - 127.0.0.1
+# 启用多用户模式
+enableUserAccounts: false
+# 启用隐蔽登录模式：在登录界面隐藏用户列表
+enableDiscreetLogin: false
+# 如果同时启用 `basicAuthMode` 和此项，
+# Basic 认证会使用各用户账号自己的用户名和密码
+perUserBasicAuth: false
+
+# -- SSO 登录配置 --
+sso:
+  # 启用基于 Authelia 的自动登录。仅在你已将 Authelia
+  # 作为反向代理上的中间件安装并配置完成后启用
+  # https://www.authelia.com/
+  # 这会自动登录到与 Authelia 用户名相同的账号。
+  # （请确保 Authelia 中的用户名与 SillyTavern 中的小写用户名完全一致）
+  autheliaAuth: false
+  # 启用基于 Authentik 的自动登录。仅在你已将 Authentik
+  # 作为反向代理上的中间件安装并配置完成后启用。
+  # https://goauthentik.io/
+  # 这会自动登录到与 Authentik 用户名相同的账号。
+  # （请确保 Authentik 中的用户名与 SillyTavern 中的小写用户名完全一致）。
+  authentikAuth: false
+  # 用于 SSO 认证的受信任代理 IP 列表。
+  # 支持通配符或 CIDR 子网表示法。
+  # 示例：['127.0.0.1', '192.168.1.1']
+  # 设为 ['*'] 会信任所有代理（除非另有安全措施，否则不建议）
+  trustedProxies:
+    - ::1
+    - 127.0.0.1
+
+# Host 白名单配置。使用 listen 模式时建议启用
+hostWhitelist:
+  # 启用或禁用 Host 白名单
+  enabled: false
+  # 扫描传入请求，检测潜在的 Host 请求头伪造
+  scan: true
+  # 允许的 Host 列表。不要包含 localhost 或 IP，这些会被视为安全。
+  # 使用前导点可创建子域名匹配模式。
+  # 示例：
+  # - example.com
+  # - .trycloudflare.com
+  hosts: []
+
+# 对解析到私有 IP 地址的服务器端 HTTP 请求执行白名单检查。
+# 这是防止服务器端请求伪造（SSRF）攻击的额外安全层。
+# 启用 listen 模式时，或服务器可被不受信任用户访问时，建议启用。
+privateAddressWhitelist:
+  # 启用私有地址白名单，以阻止访问未被允许的私有 IP 范围。
+  enabled: false
+  # 若为 true，无法解析主机名的请求会被允许，而不是被阻止。
+  allowUnresolvedHosts: false
+  # 将被阻止和被允许的请求记录到控制台。
+  log:
+    # 使用警告消息将被阻止的请求记录到控制台
+    blockedRequests: true
+    # 使用信息消息将被允许的请求记录到控制台
+    allowedRequests: false
+  # 允许访问的私有 IP 范围列表（CIDR 表示法或通配符格式）。
+  # 默认允许回环 IP 范围，但你可以按需自定义此列表。
+  allowedRanges:
+    - '127.0.0.0/8'      # 回环地址 (IPv4)
+    - '::1/128'          # 回环地址 (IPv6)
+
+# 用户会话超时时间（秒）。默认值为 -1，即不按空闲时间过期。
+## 设置为正数：在一定空闲时间后使会话过期
+## 设置为 0：浏览器关闭时使会话过期
+## 设置为负数：禁用会话过期
+sessionTimeout: -1
+# 禁用 CSRF 保护 - 不建议
+disableCsrfProtection: false
+# 禁用启动时安全检查 - 不建议
+securityOverride: false
+# -- 日志配置 --
+logging:
+  # 启用访问日志，输出到 access.log 文件和控制台
+  # 记录新连接的时间戳、IP 地址和 User-Agent
+  enableAccessLog: true
+  # 终端显示的最低日志级别（DEBUG = 0，INFO = 1，WARN = 2，ERROR = 3）
+  minLogLevel: 0
+# -- 限流配置 --
+rateLimiting:
+  # 使用 `forwardedHeaders` 部分中任一已启用请求头识别客户端 IP，用于限流。
+  # 若禁用，则只使用 socket IP；位于反向代理之后时，这可能无法正确工作。
+  preferRealIpHeader: false
+  # 设置触发限流前允许的 Basic 认证失败次数上限。设为 0 可禁用 Basic 认证限流。
+  basicAuthMaxAttempts: 5
+  # 设置触发限流前允许的账号登录失败次数上限。设为 0 可禁用账号登录限流。
+  accountsLoginMaxAttempts: 5
+  # 设置触发限流前允许的账号恢复失败次数上限。设为 0 可禁用账号恢复限流。
+  accountsRecoverMaxAttempts: 5
+# 设为 true 可让 IP 白名单、限流和访问日志等功能支持从特定请求头读取真实 IP。
+# 只有在确认使用了正确配置的反向代理时才应修改，否则可能导致 IP 欺骗。
+forwardedHeaders:
+  # X-Real-IP 请求头（常见于 Nginx 和 Caddy）
+  xRealIp: true
+  # X-Forwarded-For 请求头（常见于许多代理，但可能包含多个 IP - 只会使用第一个）
+  xForwardedFor: true
+  # CF-Connecting-IP 请求头（Cloudflare Tunnels 使用）
+  cfConnectingIp: false
+
+## 备份配置
+backups:
+  # 允许用户创建其数据的完整备份归档
+  allowFullDataBackup: true
+  # 所有备份类型的通用设置
+  common:
+    # 每个聊天和设置文件要保留的备份数量
+    numberOfBackups: 50
+  chat:
+    # 启用自动聊天备份
+    enabled: true
+    # 保存前校验聊天文件完整性
+    checkIntegrity: true
+    # 每个用户保留的聊天备份总数上限（从最新开始计）。设为 -1 可禁用此总量上限。
+    maxTotalBackups: -1
+    # 每个用户聊天备份的限流间隔（毫秒）
+    throttleInterval: 10000
+
+# 缩略图配置
+thumbnails:
+  # 启用缩略图生成
+  enabled: true
+  # 缩略图的图片格式：
+  # * "jpg"：压缩效果最好，质量可调，但不支持透明
+  # * "png"：保留透明度，但文件大小约增加 100%
+  # 修改此项只影响新缩略图。若要重新生成旧缩略图，请清空用户数据中的 /thumbnails 文件夹。
+  format: "jpg"
+  # JPG 缩略图质量（0-100）
+  quality: 95
+  # 每种类型缩略图的最大尺寸 [宽度, 高度]
+  dimensions: { 'bg': [160, 90], 'avatar': [96, 144], 'persona': [96, 144] }
+
+# 性能相关配置
+performance:
+  # 启用角色卡懒加载。可改善大型角色卡库的性能。
+  # 可能与某些扩展存在兼容性问题。
+  lazyLoadCharacters: false
+  # 已解析角色卡可使用的最大内存量。设为 0 可禁用内存缓存。
+  memoryCacheCapacity: '100mb'
+  # 启用角色卡磁盘缓存。可改善大型角色卡库的性能。
+  useDiskCache: true
+  # 配置大负载客户端请求的 gzip 压缩（例如设置或聊天保存）。
+  requestCompression:
+    # 启用请求压缩。
+    enabled: false
+    # 触发压缩的最小负载大小。设为 0 则无论大小都压缩所有请求。
+    minPayloadSize: '256kb'
+    # 允许压缩的负载大小硬上限。设为 0 表示允许压缩任意大小。
+    maxPayloadSize: '8mb'
+    # 请求压缩超时时间（毫秒）。
+    timeout: 4000
+
+# 缓存清除配置
+# 重要：需要 localhost 或使用 HTTPS 的域名，否则无法工作！
+cacheBuster:
+  # 首次加载或上传图片文件后清除浏览器缓存
+  enabled: false
+  # 只为匹配指定 User-Agent 正则表达式的请求清除缓存
+  # 示例：'firefox|safari'（不区分大小写）
+  userAgentPattern: ''
+
+# 允许通过 API 暴露密钥
+allowKeysExposure: false
+# 跳过新版默认内容检查
+skipContentCheck: false
+# 允许用于卡片下载的主机
+whitelistImportDomains:
+  - localhost
+  - cdn.discordapp.com
+  - files.catbox.moe
+  - raw.githubusercontent.com
+# API 请求覆盖配置（用于 KoboldAI 和文本补全 API）
+## 注意：如果端口不是默认端口（80 或 443），host 需要包含端口号
+## 格式为对象数组：
+## - hosts:
+##   - example.com
+##   headers:
+##     Content-Type: application/json
+##   - 127.0.0.1:5001
+##   headers:
+##     User-Agent: "Googlebot/2.1 (+http://www.google.com/bot.html)"
+requestOverrides: []
+
+# 扩展配置
+extensions:
+  # 启用 UI 扩展
+  enabled: true
+  # 当发布版本变化时自动更新扩展
+  autoUpdate: true
+  models:
+    # 启用从 HuggingFace 自动下载模型
+    autoDownload: true
+    # 供扩展使用的附加模型。需要 HuggingFace 模型中心中的 ONNX 格式模型 ID
+    classification: Cohee/distilbert-base-uncased-go-emotions-onnx
+    captioning: Xenova/vit-gpt2-image-captioning
+    embedding: Cohee/jina-embeddings-v2-base-en
+    speechToText: Xenova/whisper-small
+    textToSpeech: Xenova/speecht5_tts
+
+# 用于插件/扩展仓库操作的 Git 后端。
+# - 使用 "auto" 表示优先使用系统 git，失败时回退到内置后端
+# - 使用 "system" 表示强制使用系统后端
+# - 使用 "builtin" 表示强制使用内置后端
+git:
+  backend: auto
+
+# 可按需下载额外的模型分词器（tokenizer）。
+# 禁用后会回退到其他本地可用的分词器（tokenizer）。
+enableDownloadableTokenizers: true
+# -- OpenAI 配置 --
+# 在严格提示词后处理模式下，如果提示词不是以用户消息开头，则使用此占位消息
+promptPlaceholder: "[Start a new chat]"
+openai:
+  # 向 OpenAI 补全 API 发送随机用户 ID
+  randomizeUserId: false
+  # 如果不为空，会把它作为系统消息添加到每个图像描述补全提示词的开头
+  # 示例："Perform the instructions to the best of your ability.\n"（用于 LLaVA）
+  # 图像内联模式下不使用
+  captionSystemPrompt: ""
+# -- DeepL 翻译配置 --
+deepl:
+  # 可用选项：default、more、less、prefer_more、prefer_less
+  formality: default
+# -- Mistral API 配置 --
+mistral:
+  # 使用提示词中的最后一条助手消息作为回复预填
+  # 注意：此前缀会原样回显到补全结果中。你可能需要使用正则将其裁剪掉。
+  enablePrefix: false
+# -- Ollama API 配置 --
+ollama:
+  # 控制请求结束后模型在内存中保持加载的时长
+  # * -1：无限期保持模型加载
+  # * 0：请求结束后立即卸载模型
+  # * N（任意正数）：请求结束后继续保持模型加载 N 秒。
+  keepAlive: -1
+  # 控制生成请求的 "num_batch"（批大小）参数
+  # * -1：使用模型默认值
+  # * N（正数）：使用指定值。必须是 2 的幂，例如 128、256、512 等。
+  batchSize: -1
+# -- Anthropic Claude API 配置 --
+claude:
+  # 启用系统提示词缓存（如果支持）。
+  # https://platform.claude.com/docs/en/build-with-claude/prompt-caching
+  # -- 重要！--
+  # 仅在聊天历史之前的提示词是静态的、且请求之间不会变化时使用
+  # （例如不要包含 {{random}} 宏，也不要包含非聊天内注入方式的世界书内容）。
+  # 否则，缓存未命中只会浪费费用。
+  enableSystemPromptCache: false
+  # 按深度启用消息历史缓存（如果支持）。
+  # https://platform.claude.com/docs/en/build-with-claude/prompt-caching
+  # -- 重要！--
+  # 请谨慎使用。行为可能不可预测，且无法作出任何保证。
+  # 设为整数以指定所需深度。0（不包含预填内容）应适合大多数用例。
+  # 任何非负整数以外的值都会被忽略，且不会启用按深度缓存。
+  cachingAtDepth: -1
+  # 使用 1h TTL，而不是默认的 5m。
+  ## 5m：基础价格 x 1.25
+  ## 1h：基础价格 x 2
+  extendedTTL: false
+  # 为受支持模型启用自适应思考（thinking，例如 Opus/Sonnet 4.6；Opus 4.7 始终使用自适应模式）。
+  # 禁用后，对可切换模型强制使用旧式思考（thinking）模式（带思考预算 thinking budget）。
+  # https://platform.claude.com/docs/en/build-with-claude/adaptive-thinking
+  enableAdaptiveThinking: false
+# -- Google Gemini API 配置 --
+gemini:
+  # API 端点版本（"v1beta" 或 "v1alpha"）
+  apiVersion: 'v1beta'
+  # 在可用时将思考签名（thought signatures）加入请求（主要用于 Gemini 2.5/3 的上下文续接）。
+  thoughtSignatures: true
+  # 启用系统提示词缓存（如果支持）。仅用于 OpenRouter。
+  # -- 重要！--
+  # 仅在聊天历史之前的提示词是静态的、且请求之间不会变化时使用
+  # （例如不要包含 {{random}} 宏，也不要包含非聊天内注入方式的世界书内容）。
+  # 否则，缓存未命中只会浪费费用。
+  enableSystemPromptCache: false
+  # https://ai.google.dev/gemini-api/docs/imagen#imagen-configuration
+  image:
+    # 留空则使用 API 默认值。
+    personGeneration: 'allow_adult'
+# -- 服务器插件配置 --
+enableServerPlugins: false
+# 启动时尝试自动更新服务器插件
+enableServerPluginsAutoUpdate: true
