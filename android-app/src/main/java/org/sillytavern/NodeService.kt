@@ -20,6 +20,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.sillytavern.config.ConfigEditor
 import org.sillytavern.core.AppPaths
+import org.sillytavern.core.AssetInstaller
 import org.sillytavern.core.NodeRuntime
 import org.sillytavern.core.ServiceState
 import java.io.BufferedReader
@@ -92,17 +93,32 @@ class NodeService : Service() {
             return
         }
 
-        val config = configEditor.readOrNull(paths.configFile)
-        val port = config?.port ?: ConfigEditor.DEFAULT_PORT
-        val healthUrl = ConfigEditor.healthCheckUrl(config)
+        // 首启/升级：解压 SillyTavern 资产（幂等，已就绪则立即返回）。
+        if (!AssetInstaller.ensureInstalled(applicationContext)) {
+            NodeRuntime.appendLog("[shell] " + AssetInstaller.state.value.message)
+            failTo(getString(R.string.notification_error_title))
+            return
+        }
+        if (!paths.serverReady()) {
+            NodeRuntime.appendLog("[shell] " + getString(R.string.msg_assets_missing) + " -> " + paths.serverJs.absolutePath)
+            failTo(getString(R.string.notification_error_title))
+            return
+        }
 
         try {
-            prepareM0Assets()
-            paths.nodeTmpDir.mkdirs()
+            paths.ensureRuntimeDirs()
 
-            NodeRuntime.appendLog("[shell] exec ${paths.nodeBin.absolutePath} server.js (cwd=${paths.m0Dir})")
-            val pb = ProcessBuilder(paths.nodeBin.absolutePath, "server.js")
-                .directory(paths.m0Dir)
+            // 首启时 config.yaml 尚不存在，由 SillyTavern 按 --configPath 从 default/config.yaml 创建。
+            val configExistedBefore = paths.configFile.exists()
+            val cmd = listOf(
+                paths.nodeBin.absolutePath, "server.js",
+                "--configPath", paths.configFile.absolutePath,
+                "--dataRoot", paths.dataDir.absolutePath,
+                "--browserLaunchEnabled=false",
+            )
+            NodeRuntime.appendLog("[shell] exec ${cmd.joinToString(" ")} (cwd=${paths.serverDir})")
+            val pb = ProcessBuilder(cmd)
+                .directory(paths.serverDir)
                 .redirectErrorStream(true)
             pb.environment().apply {
                 put("HOME", paths.filesDir.absolutePath)
@@ -115,13 +131,18 @@ class NodeService : Service() {
                     if (existingLdPath.isNullOrEmpty()) paths.nativeLibDir.absolutePath
                     else "${paths.nativeLibDir.absolutePath}:$existingLdPath",
                 )
-                put("ST_PORT", port.toString())
             }
             val proc = pb.start()
             process = proc
 
             scope.launch { pumpOutput(proc) }
             scope.launch { awaitExit(proc) }
+
+            // 首启新建 config 后重新读取，用真实端口/监听地址计算健康检查与局域网 URL。
+            if (!configExistedBefore) awaitConfigFile(paths.configFile, proc)
+            val config = configEditor.readOrNull(paths.configFile)
+            val port = config?.port ?: ConfigEditor.DEFAULT_PORT
+            val healthUrl = ConfigEditor.healthCheckUrl(config)
 
             // 健康检查：轮询直到 200，或进程提前退出 / 超时。
             val running = pollHealth(healthUrl, proc)
@@ -199,10 +220,12 @@ class NodeService : Service() {
         }
     }
 
-    private fun prepareM0Assets() {
-        paths.m0Dir.mkdirs()
-        assets.open("m0-server.js").use { input ->
-            paths.m0ServerJs.outputStream().use { output -> input.copyTo(output) }
+    /** 轮询等待 config.yaml 出现（首启由 SillyTavern 按 --configPath 新建），最多 CONFIG_WAIT_MS。 */
+    private suspend fun awaitConfigFile(file: File, proc: Process) {
+        val deadline = SystemClock.elapsedRealtime() + CONFIG_WAIT_MS
+        while (scope.isActive && SystemClock.elapsedRealtime() < deadline) {
+            if (file.exists() || !proc.isAlive || intentionalStop) return
+            delay(200)
         }
     }
 
@@ -335,6 +358,7 @@ class NodeService : Service() {
         private const val HEALTH_TIMEOUT_MS = 60_000L
         private const val HEALTH_INTERVAL_MS = 500L
         private const val FORCE_KILL_AFTER_MS = 4_000L
+        private const val CONFIG_WAIT_MS = 15_000L
 
         fun start(context: Context) {
             val intent = Intent(context, NodeService::class.java).setAction(ACTION_START)

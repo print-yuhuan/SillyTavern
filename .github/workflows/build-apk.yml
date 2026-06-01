@@ -140,11 +140,21 @@ jobs:
           echo "libc++_shared.so 来源：$src"
           ls -l "$dest"
 
-      # ── 打包完整 SillyTavern 资产（第三/四阶段接入后启用） ─────────────────
-      # 目前 App 仅消费 assets/m0-server.js 验证 M0；完整资产打包脚本已就绪，
-      # 待 NodeService 切换到真实 server.js 后，将此步骤改为在 release 时执行。
-      - name: 打包 SillyTavern 资产（占位，默认跳过）
-        if: ${{ false }}
+      # ── 打包完整 SillyTavern 资产（第三/四阶段） ───────────────────────────
+      # NodeService 已切换到真实 server.js，App 首启需解压这些资产，故每次构建都打包。
+      # 产物 sillytavern-code.zip / sillytavern-modules.zip / version.json 写入
+      # android-app/src/main/assets/，随后被「构建 APK」打进包内。
+      - name: 安装 Node.js（打包 SillyTavern 资产用）
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: third_party/SillyTavern/package-lock.json
+
+      - name: 打包 SillyTavern 资产（code.zip / modules.zip / version.json）
+        env:
+          ST_APP_VERSION_NAME: ${{ steps.vars.outputs.version_name }}
+          ST_APP_VERSION_CODE: ${{ github.run_number }}
         run: bash packaging/package-sillytavern.sh
 
       - name: 准备签名 keystore（仅 release，且已配置 secret）
@@ -198,14 +208,17 @@ jobs:
           echo "apk_path=out/$name" >> "$GITHUB_OUTPUT"
           echo "apk_name=$name" >> "$GITHUB_OUTPUT"
 
-      - name: 校验 APK 同时含 libnode.so 与 libc++_shared.so
+      - name: 校验 APK 含原生库与 SillyTavern 资产
         run: |
           set -eux
           apk="${{ steps.collect.outputs.apk_path }}"
           entries="$(unzip -l "$apk")"
           echo "$entries" | grep -q "lib/${{ env.ABI }}/libnode.so"
           echo "$entries" | grep -q "lib/${{ env.ABI }}/libc++_shared.so"
-          echo "APK 校验通过：同时包含 lib/${{ env.ABI }}/libnode.so 与 libc++_shared.so"
+          echo "$entries" | grep -q "assets/sillytavern-code.zip"
+          echo "$entries" | grep -q "assets/sillytavern-modules.zip"
+          echo "$entries" | grep -q "assets/version.json"
+          echo "APK 校验通过：含 libnode.so / libc++_shared.so 与 code.zip / modules.zip / version.json"
 
       - name: 上传 APK 为 workflow artifact
         uses: actions/upload-artifact@v4

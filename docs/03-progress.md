@@ -7,9 +7,9 @@
 | 阶段 | 名称 | 状态 |
 |---|---|---|
 | 第一阶段 | 仓库骨架 | ✅ 已完成 |
-| 第二阶段 | M0 真机 PoC | 🚧 CI 已成功产出 debug APK，待真机验证 Node 启动 |
-| 第三阶段 | SillyTavern 资产解压 | ⬜ 未开始 |
-| 第四阶段 | 完整 NodeService | ⬜ 未开始 |
+| 第二阶段 | M0 真机 PoC | ✅ 已完成（真机验证 Node 启动成功） |
+| 第三阶段 | SillyTavern 资产解压 | ✅ 已完成（代码+CI 就绪，待真机回归） |
+| 第四阶段 | 完整 NodeService | ✅ 已完成（代码就绪，待真机回归） |
 | 第五阶段 | App UI | ⬜ 未开始（首页 M0 版已具雏形） |
 | 第六阶段 | 配置 UI 接管 config.yaml | ⬜ 未开始（已具备结构化读取与 URL 推导） |
 | 第七阶段 | WebView | 🚧 基础实现已就绪，待联调 |
@@ -63,14 +63,43 @@ CI 验证（已通过）：
 - 产物 artifact：`SillyTavern-android-arm64-v8a-debug-<run_number>.apk`。
 - 已为 `build-apk.yml` 与 `check-upstream.yml` 顶部加 `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true`，消除 actions 的 Node 20 弃用告警。
 
-未完成（仅剩真机验证）：
+真机验证结果（已通过）：
 
-- 安装 debug APK 到 arm64 真机：Node 能否从 `nativeLibraryDir` 启动、日志是否回显、停止是否结束进程、后台前台服务通知是否常驻。
+- 首次安装真机启动报 `CANNOT LINK EXECUTABLE ... library "libc++_shared.so" not found`：`libnode.so`（NDK/Clang 构建）运行时依赖 `libc++_shared.so`，而 APK 只打了 `libnode.so`。
+- 修复：CI 从 NDK r27d 复制 `libc++_shared.so` 一并打进 `jniLibs/arm64-v8a`；`NodeService` 设 `LD_LIBRARY_PATH=nativeLibraryDir` 并在启动前检查该库；CI 增加 APK 内容校验。修复后 M0 真机启动成功。
 
-下一步：
+---
 
-1. 下载 workflow artifact 中的 debug APK，安装到 arm64 真机，按工作计划第二阶段验收点逐项确认。
-2. M0 通过后再进入第三阶段（资产解压）与第四阶段（完整 SillyTavern 启动）。
+## 第三阶段：SillyTavern 资产解压 ✅
+
+完成情况：
+
+- `core/AssetInstaller`：首启/升级时把 APK 内 `sillytavern-code.zip`、`sillytavern-modules.zip` 解压到 `SILLYTAVERN_SERVER_DIR`（modules zip 顶层即 `node_modules/`）；创建 `config/`、`data/`、`node-tmp/`；写入 `version.json`。
+  - 安装判定按 `assets/version.json` 的 `codeZipSha256` / `modulesZipSha256` 与已安装版本比对：一致即跳过（首次只解压一次），不一致或缺失则重装 → APK 升级自动重解压 `server/`。
+  - `server/` 为可替换层（重装前清空再解压）；`config/`、`data/` 为持久层，解压/升级绝不触碰 → 升级保留用户配置与数据。
+  - `force=true` 提供「修复」语义（仅重解压 `server/`，第八阶段接 UI）。
+  - 解压带目录穿越防护与进度回调（`InstallState` StateFlow）。
+- `AppPaths`：新增 `serverReady()`、`ensureRuntimeDirs()`。
+- `LauncherActivity`：开屏触发解压，进度条展示，解压期间禁用「启动服务」。
+- CI（`build-apk.yml`）：启用 `packaging/package-sillytavern.sh`（`npm ci --omit=dev` → 扫描 `.node` → 打两个 zip + `version.json`），每次构建都打进 APK；APK 内容校验扩展为同时检查 `code.zip`/`modules.zip`/`version.json`。
+- `build.gradle.kts`：`androidResources { noCompress += "zip" }`，资产按原样打包。
+
+待真机回归：首启解压一次、升级保配置数据、`version.json` 字段完整。
+
+---
+
+## 第四阶段：完整 NodeService ✅
+
+完成情况：
+
+- `NodeService` 由 M0 测试服务切换到真实 SillyTavern：
+  `libnode.so server.js --configPath <config.yaml> --dataRoot <data> --browserLaunchEnabled=false`，`cwd=SILLYTAVERN_SERVER_DIR`。
+- 启动前依次校验：`libnode.so` 可执行、`libc++_shared.so` 存在、资产已解压（`AssetInstaller.ensureInstalled`）、`serverReady()`。
+- 环境变量：`HOME`、`TMPDIR`、`PATH`、`LD_LIBRARY_PATH`（去掉 M0 的 `ST_PORT`）。
+- 首启时 `config.yaml` 由 SillyTavern 按 `--configPath` 新建；`awaitConfigFile` 等其出现后重读，按真实 `port`/`listen`/`listenAddress.ipv4`/`ssl.enabled` 计算健康检查与局域网 URL。
+- 健康检查轮询、状态机（Stopped/Starting/Running/Stopping/Error）、退出码捕获沿用 M1 实现。
+
+待真机回归：完整 SillyTavern 可起停、首页显示 URL/端口/运行时长、首启自动生成 `config.yaml`。
 
 ---
 

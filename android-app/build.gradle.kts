@@ -99,6 +99,11 @@ android {
         }
     }
 
+    // SillyTavern 资产已是压缩 zip，按原样打包（避免 aapt 二次压缩浪费体积/时间，加快首启解压）。
+    androidResources {
+        noCompress += "zip"
+    }
+
     lint {
         abortOnError = false
         checkReleaseBuilds = false

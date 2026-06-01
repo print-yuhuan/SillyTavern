@@ -55,4 +55,15 @@ class AppPaths(context: Context) {
 
     /** 内置 Node 是否存在且具备可执行位。 */
     fun nodeBinReady(): Boolean = nodeBin.exists() && nodeBin.canExecute()
+
+    /** SillyTavern 服务端资产是否已解压就绪（server.js 与 node_modules 均在位）。 */
+    fun serverReady(): Boolean = serverJs.exists() && nodeModulesDir.isDirectory
+
+    /**
+     * 创建壳侧运行所需目录。
+     * config/ 与 data/ 是持久层：仅 mkdirs，绝不在解压或升级时清空（实现方案 §4 更新边界）。
+     */
+    fun ensureRuntimeDirs() {
+        listOf(sillyTavernHome, configDir, dataDir, nodeTmpDir).forEach { it.mkdirs() }
+    }
 }

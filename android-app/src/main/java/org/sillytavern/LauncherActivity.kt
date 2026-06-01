@@ -38,6 +38,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
@@ -63,6 +64,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.delay
+import org.sillytavern.core.AssetInstaller
 import org.sillytavern.core.NodeRuntime
 import org.sillytavern.core.ServiceState
 import org.sillytavern.ui.theme.SillyTavernTheme
@@ -97,6 +99,10 @@ private fun HomeScreen() {
     val lanUrl by NodeRuntime.lanUrl.collectAsStateWithLifecycle()
     val runningSince by NodeRuntime.runningSince.collectAsStateWithLifecycle()
     val logs by NodeRuntime.logs.collectAsStateWithLifecycle()
+    val installState by AssetInstaller.state.collectAsStateWithLifecycle()
+
+    // 开屏即解压 SillyTavern 资产（首次约数十秒；幂等，已就绪则立即返回）。
+    LaunchedEffect(Unit) { AssetInstaller.ensureInstalled(context.applicationContext) }
 
     // 运行时通知权限请求（API 33+）。launcher 无条件创建以保证组合结构稳定，仅在需要时发起请求。
     val permLauncher = rememberLauncherForActivityResult(
@@ -131,10 +137,11 @@ private fun HomeScreen() {
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            M0Banner()
+            InstallBanner(installState)
             StatusCard(state = state, url = url, lanUrl = lanUrl, runningSince = runningSince)
             ActionButtons(
                 state = state,
+                installing = installState.phase == AssetInstaller.Phase.EXTRACTING,
                 onStart = { NodeService.start(context) },
                 onStop = { NodeService.stop(context) },
                 onOpenWeb = { openWeb(context, url) },
@@ -152,13 +159,32 @@ private fun HomeScreen() {
 }
 
 @Composable
-private fun M0Banner() {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Text(
-            text = stringResource(R.string.m0_banner),
-            style = MaterialTheme.typography.bodySmall,
-            modifier = Modifier.padding(12.dp),
-        )
+private fun InstallBanner(state: AssetInstaller.InstallState) {
+    when (state.phase) {
+        AssetInstaller.Phase.EXTRACTING -> Card(modifier = Modifier.fillMaxWidth()) {
+            Column(
+                modifier = Modifier.padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(stringResource(R.string.install_preparing), style = MaterialTheme.typography.bodyMedium)
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                if (state.filesExtracted > 0) {
+                    Text(
+                        text = stringResource(R.string.install_files_extracted, state.filesExtracted),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+        }
+        AssetInstaller.Phase.ERROR -> Card(modifier = Modifier.fillMaxWidth()) {
+            Text(
+                text = state.message.ifBlank { stringResource(R.string.install_failed) },
+                style = MaterialTheme.typography.bodyMedium,
+                color = status_error,
+                modifier = Modifier.padding(12.dp),
+            )
+        }
+        else -> Unit
     }
 }
 
@@ -215,6 +241,7 @@ private fun UptimeText(state: ServiceState, runningSince: Long?) {
 @Composable
 private fun ActionButtons(
     state: ServiceState,
+    installing: Boolean,
     onStart: () -> Unit,
     onStop: () -> Unit,
     onOpenWeb: () -> Unit,
@@ -222,7 +249,8 @@ private fun ActionButtons(
     val isRunning = state == ServiceState.RUNNING
     val isStarting = state == ServiceState.STARTING
     val isStopping = state == ServiceState.STOPPING
-    val canStart = state == ServiceState.STOPPED || state == ServiceState.ERROR
+    // 资产解压期间禁用启动，避免在资产未就绪时拉起服务。
+    val canStart = (state == ServiceState.STOPPED || state == ServiceState.ERROR) && !installing
 
     Row(
         modifier = Modifier.fillMaxWidth(),
