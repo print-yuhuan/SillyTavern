@@ -56,8 +56,12 @@ class AppPaths(context: Context) {
     /** 内置 Node 是否存在且具备可执行位。 */
     fun nodeBinReady(): Boolean = nodeBin.exists() && nodeBin.canExecute()
 
-    /** SillyTavern 服务端资产是否已解压就绪（server.js 与 node_modules 均在位）。 */
-    fun serverReady(): Boolean = serverJs.exists() && nodeModulesDir.isDirectory
+    /** 上游根目录文件 webpack.config.js：启动链路会 import 它，缺失则 Node 启动即崩。 */
+    val webpackConfig: File = File(serverDir, "webpack.config.js")
+
+    /** SillyTavern 服务端资产是否已解压就绪（server.js、webpack.config.js 与 node_modules 均在位）。 */
+    fun serverReady(): Boolean =
+        serverJs.exists() && webpackConfig.exists() && nodeModulesDir.isDirectory
 
     /**
      * 创建壳侧运行所需目录。

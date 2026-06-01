@@ -355,7 +355,9 @@ class NodeService : Service() {
         const val ACTION_START = "org.sillytavern.action.START"
         const val ACTION_STOP = "org.sillytavern.action.STOP"
 
-        private const val HEALTH_TIMEOUT_MS = 60_000L
+        // 首启时 SillyTavern 会在手机上用 webpack 编译前端库（公共 lib.js），耗时明显高于桌面；
+        // 放宽到 180s，避免首启被误判失败。编译结果缓存在 dataRoot/_webpack，后续启动很快。
+        private const val HEALTH_TIMEOUT_MS = 180_000L
         private const val HEALTH_INTERVAL_MS = 500L
         private const val FORCE_KILL_AFTER_MS = 4_000L
         private const val CONFIG_WAIT_MS = 15_000L

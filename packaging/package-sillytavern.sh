@@ -42,12 +42,35 @@ echo "$node_addons" > "$ROOT/packaging/native-addons-scan.txt"
 # 3) 打包运行必需源码 → sillytavern-code.zip（排除 .git/.github/测试/开发产物）
 echo "==> 打包 sillytavern-code.zip"
 rm -f "$ASSETS/sillytavern-code.zip"
-include=()
-for p in server.js package.json package-lock.json default src public plugins plugins.js recover.js index.d.ts; do
+
+# 运行必需文件/目录：缺失视为上游结构变动，直接失败，避免漏包静默通过构建。
+# ★ webpack.config.js 必不可少：server.js → src/middleware/webpack-serve.js 直接 import '../../webpack.config.js'，
+#    缺失会导致真机 Node 启动即 ERR_MODULE_NOT_FOUND。
+required=(server.js package.json package-lock.json webpack.config.js default src public)
+for p in "${required[@]}"; do
+  if [[ ! -e "$ST_DIR/$p" ]]; then
+    echo "::error::上游缺少运行必需项 '$p'（third_party/SillyTavern 结构可能已变动），中止打包。"
+    exit 1
+  fi
+done
+
+# 实际打包清单 = 必需项 + 可选项（存在才纳入）。
+include=("${required[@]}")
+for p in plugins plugins.js recover.js index.d.ts; do
   [[ -e "$ST_DIR/$p" ]] && include+=("$p")
 done
 ( cd "$ST_DIR" && zip -r -q -X "$ASSETS/sillytavern-code.zip" "${include[@]}" \
     -x '*/.git/*' '*/.github/*' '*/node_modules/*' '*/tests/*' '*.log' )
+
+# 校验 zip 内确实含关键文件（构建期即暴露漏包，而非真机启动才发现）。
+echo "==> 校验 sillytavern-code.zip 关键文件"
+zip_names="$(unzip -Z1 "$ASSETS/sillytavern-code.zip")"
+for f in server.js package.json package-lock.json webpack.config.js; do
+  grep -qxF "$f" <<<"$zip_names" || { echo "::error::sillytavern-code.zip 缺少文件 '$f'。"; exit 1; }
+done
+for d in default src public; do
+  grep -qE "^${d}/" <<<"$zip_names" || { echo "::error::sillytavern-code.zip 缺少目录 '$d/'。"; exit 1; }
+done
 
 # 4) 打包 node_modules → sillytavern-modules.zip
 echo "==> 打包 sillytavern-modules.zip"

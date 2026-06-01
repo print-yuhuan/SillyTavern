@@ -84,6 +84,8 @@ CI 验证（已通过）：
 - CI（`build-apk.yml`）：启用 `packaging/package-sillytavern.sh`（`npm ci --omit=dev` → 扫描 `.node` → 打两个 zip + `version.json`），每次构建都打进 APK；APK 内容校验扩展为同时检查 `code.zip`/`modules.zip`/`version.json`。
 - `build.gradle.kts`：`androidResources { noCompress += "zip" }`，资产按原样打包。
 
+真机回归修复（漏包 webpack.config.js）：首启 `server.js` 报 `ERR_MODULE_NOT_FOUND: webpack.config.js` —— 打包 include 漏了上游根文件 `webpack.config.js`（被 `src/middleware/webpack-serve.js` 直接 import）。修复：打包脚本 include 补入该文件 + 必需项断言 + 打包后 `unzip -Z1` 校验关键文件；`AppPaths.serverReady()` 增加 `webpack.config.js` 检查；首启 webpack 在手机上编译前端库较慢，`HEALTH_TIMEOUT_MS` 由 60s 放宽到 180s。
+
 待真机回归：首启解压一次、升级保配置数据、`version.json` 字段完整。
 
 ---
@@ -101,11 +103,21 @@ CI 验证（已通过）：
 
 待真机回归：完整 SillyTavern 可起停、首页显示 URL/端口/运行时长、首启自动生成 `config.yaml`。
 
+新增核对事项：
+
+- 启动参数需最终统一为 `--configPath <SILLYTAVERN_CONFIG_FILE>`、`--dataRoot <SILLYTAVERN_DATA_DIR>`、`--browserLaunchEnabled=false`；常规启动不应再传 `--port`、`--listen` 等会覆盖配置文件的参数。
+- 日志需明确打印默认模板 `SILLYTAVERN_SERVER_DIR/default/config.yaml` 与实际生效配置 `SILLYTAVERN_CONFIG_FILE`，避免后续调试误改模板。
+- 需要补一项只读诊断：递归比较模板配置与实际配置的键路径，记录缺失/多余键；只用于诊断，不删除用户未知字段。
+
 ---
 
 ## 关键事实备忘
 
 - libnode.so sha256：`fa3ae680f5e796953e3275b84eaa29d51f14346ba9da43ea9b5617f5b461c2de`（Node 24.16.0 / API 28 / arm64-v8a）。
 - 本机参考 clone `D:\SillyTavern\SillyTavern` 为 tag 1.18.0，仅供参考，不入库、不打包。
-- 上游 `server.js` CLI：`--configPath`、`--dataRoot`、`--browserLaunchEnabled`（详见 `third_party/SillyTavern/src/command-line.js`）。
+- 上游实际生效配置由 `--configPath` 决定；`default/config.yaml` 只是模板，用于首次创建和补齐实际配置。
+- 上游 `server.js` 常用 CLI：`--configPath`、`--dataRoot`、`--browserLaunchEnabled`；完整可用项还包括 `--port`、`--listen`、`--listenAddressIPv4`、`--listenAddressIPv6`、`--enableIPv4`、`--enableIPv6`、`--dnsPreferIPv6`、`--ssl`、`--certPath`、`--keyPath`、`--keyPassphrase`、`--whitelist`、`--basicAuthMode`、`--corsProxy`、`--disableCsrf`、`--enableKeepAlive`、`--requestProxyEnabled`、`--requestProxyUrl`、`--requestProxyBypass`、`--heartbeatInterval`。
+- CLI 参数优先级高于 `config.yaml`；Android 壳常规启动只固定传路径和 WebView 控制参数，用户可配置项写入实际配置文件。
+- `--global` 会忽略 `--configPath` 与 `--dataRoot`，Android 壳禁止使用。
+- 弃用 CLI：`--autorun`、`--autorunHostname`、`--autorunPortOverride`、`--avoidLocalhost`；后续不映射到 UI。
 - 健康检查 URL 逻辑对齐上游 `getIPv4ListenUrl`：`listen=false`→`127.0.0.1`；`listen=true` 用 `listenAddress.ipv4`（非法回落 `0.0.0.0`，访问改 `127.0.0.1`）。
