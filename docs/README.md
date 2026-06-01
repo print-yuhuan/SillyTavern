@@ -10,3 +10,10 @@
 | [04-ci-and-release.md](04-ci-and-release.md) | CI 与发布 | GitHub Actions 工作流、libnode 来源、签名与发版流程 |
 
 建议阅读顺序：先 `01` 与 `02` 了解设计与计划，再看 `03` 当前进度，构建/发版查 `04`。
+
+关键约束速记：
+
+- `default/config.yaml` 是随上游服务端代码发布的默认模板，不是实际生效配置。
+- Android 运行时实际生效的是 `SILLYTAVERN_CONFIG_FILE`，必须通过 `--configPath` 显式传给 `server.js`。
+- `--dataRoot` 指向 App 持久数据目录；`--browserLaunchEnabled=false` 禁止服务端自行拉起外部浏览器。
+- CLI 参数优先级高于 `config.yaml`，因此用户可配置项应写入实际配置文件，常规启动不要再用 CLI 覆盖。

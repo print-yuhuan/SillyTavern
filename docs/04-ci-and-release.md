@@ -29,6 +29,31 @@ CI 不能读取本机 `D:\` 路径。libnode.so 由 `Android-Node-Builder` 的 `
 > 升级 Node 版本时：在 `Android-Node-Builder` 重新构建并发布新 Release，然后在 `build-apk.yml`
 > 同步 `ANB_RELEASE_TAG` / `NODE_VERSION`（并更新 `third_party/Android-Node-Builder/` 子模块指针）。
 
+## 配置模板与启动参数校验
+
+APK 内只打包上游服务端模板 `default/config.yaml`，不打包也不覆盖设备上的实际 `config.yaml`。实际配置必须在设备首次启动时由：
+
+```text
+server.js --configPath <SILLYTAVERN_CONFIG_FILE> --dataRoot <SILLYTAVERN_DATA_DIR>
+```
+
+创建到 App 私有持久目录。
+
+CI 打包阶段需要校验：
+
+1. `sillytavern-code.zip` 必须包含 `default/config.yaml`、`server.js`、`src/config-init.js`、`src/command-line.js`。
+2. `sillytavern-code.zip` 不得包含根目录实际运行配置 `config.yaml`，避免把构建机配置带进 APK。
+3. `default/config.yaml` 能被 YAML 解析。
+4. `src/command-line.js` 或 `node server.js --help` 中仍存在 Android 壳依赖的参数：`configPath`、`dataRoot`、`browserLaunchEnabled`。
+5. Release 说明中记录本次内置 SillyTavern commit/tag、Node 版本、`default/config.yaml` 的 sha256，便于用户反馈时定位模板版本。
+
+运行时固定参数策略：
+
+- 必传：`--configPath`、`--dataRoot`、`--browserLaunchEnabled=false`。
+- 禁止：`--global`。
+- 常规不传：`--port`、`--listen`、`--ssl`、`--whitelist`、`--basicAuthMode`、`--requestProxy*` 等用户可配置项，避免覆盖持久配置。
+- 弃用参数 `--autorun*` 和 `--avoidLocalhost` 不再进入新实现。
+
 ## 发布正式版（v* Tag）
 
 1. 配置签名 Secrets（仓库 Settings → Secrets and variables → Actions）：

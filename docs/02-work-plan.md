@@ -197,6 +197,14 @@ libnode.so server.js \
   --browserLaunchEnabled=false
 ```
 
+启动参数原则:
+
+- 不传 `--global`。该模式会忽略 `--configPath` 与 `--dataRoot`,不适合 Android 私有目录布局。
+- 固定传 `--configPath`、`--dataRoot`、`--browserLaunchEnabled=false`。
+- 常规启动不传 `--port`、`--listen`、`--ssl`、`--whitelist`、`--basicAuthMode`、`--requestProxy*` 等用户配置项,避免覆盖 `config.yaml` 后导致 UI 修改不生效。
+- 若实现“诊断/安全模式”临时覆盖参数,启动日志必须明确写出“CLI 覆盖 config.yaml”。
+- 不使用弃用参数 `--autorun`、`--autorunHostname`、`--autorunPortOverride`、`--avoidLocalhost`。
+
 任务:
 
 1. 根据 `config.yaml` 解析:
@@ -204,18 +212,24 @@ libnode.so server.js \
    - `listen`
    - `listenAddress.ipv4`
    - `ssl.enabled`
-2. 生成健康检查 URL:
+2. 启动前输出本次实际路径:
+   - `SILLYTAVERN_SERVER_DIR`
+   - `SILLYTAVERN_CONFIG_FILE`
+   - `SILLYTAVERN_DATA_DIR`
+3. 生成健康检查 URL:
    - `listen: false` -> `127.0.0.1`
    - `listen: true` 且 `listenAddress.ipv4 = 0.0.0.0` -> App 内健康检查仍用 `127.0.0.1`
    - `listen: true` 且具体局域网 IP -> 使用该 IP
-3. 轮询健康检查直到服务可用。
-4. 将状态机做完整:
+4. `config.yaml` 不存在时等待 SillyTavern 按 `--configPath` 创建,再重读真实配置。
+5. 可选做只读键集合诊断:递归比较 `SILLYTAVERN_SERVER_DIR/default/config.yaml` 与 `SILLYTAVERN_CONFIG_FILE` 的键路径,只记录差异,不删除用户未知字段。
+6. 轮询健康检查直到服务可用。
+7. 将状态机做完整:
    - `Stopped`
    - `Starting`
    - `Running`
    - `Stopping`
    - `Error`
-5. 捕获进程退出码和启动错误。
+8. 捕获进程退出码和启动错误。
 
 验收:
 
@@ -223,6 +237,8 @@ libnode.so server.js \
 - 可停止并再次启动。
 - 首页能显示当前 URL、端口、运行时长。
 - `config.yaml` 不存在时,SillyTavern 能通过 `--configPath` 创建它。
+- 改动 `SILLYTAVERN_CONFIG_FILE` 后,在没有 CLI 覆盖的情况下重启即可生效。
+- 日志能明确区分默认模板 `default/config.yaml` 与实际生效的 `SILLYTAVERN_CONFIG_FILE`。
 
 ## 5. 第五阶段:App UI
 
@@ -268,28 +284,36 @@ libnode.so server.js \
 
 1. `ConfigEditor` 读取 `SILLYTAVERN_CONFIG_FILE`。
 2. 文件不存在时显示「尚未生成配置」,引导用户先启动服务。
-3. UI 接管首批字段,但界面只显示中文名称和中文说明:
+3. 读取 `SILLYTAVERN_SERVER_DIR/default/config.yaml` 作为模板参考,只用于缺键提示和“恢复默认配置”,不得覆盖用户值。
+4. UI 接管首批字段,但界面只显示中文名称和中文说明:
    - `port` -> 「服务端口」,数字输入框。
    - `listen` -> 「允许局域网访问」,开关。
    - `listenAddress.ipv4` -> 「IPv4 监听地址」,预设下拉 + IP 输入框。
+   - `listenAddress.ipv6` -> 「IPv6 监听地址」,高级输入或只读。
    - `protocol.ipv4` -> 「启用 IPv4」,开关。
    - `protocol.ipv6` -> 「启用 IPv6」,开关。
+   - `dnsPreferIPv6` -> 「DNS 优先 IPv6」,高级开关。
    - `heartbeatInterval` -> 「心跳间隔」,数字输入框 + 秒单位。
+   - `enableKeepAlive` -> 「HTTP keep-alive」,高级开关。
    - `whitelistMode` -> 「启用访问白名单」,开关。
    - `basicAuthMode` -> 「启用访问密码」,开关。
    - `basicAuthUser.username` -> 「访问账号」,文本输入框。
    - `basicAuthUser.password` -> 「访问密码」,密码输入框 + 显示/隐藏按钮。
    - `ssl.enabled` -> 「启用 HTTPS」,开关。
+   - `enableCorsProxy` -> 「CORS 代理」,高级开关。
+   - `disableCsrfProtection` -> 「禁用 CSRF 保护」,危险开关。
+   - `requestProxy.*` -> 「外发请求代理」,高级分组。
    - `browserLaunch.enabled` -> 「自动打开浏览器」,只读锁定信息行,显示「由 App 管理」。
    - `dataRoot` -> 「数据目录」,只读锁定信息行,显示「由 App 管理」。
-4. 保存时:
+5. 保存时:
    - 解析 YAML 为结构化对象。
    - 更新 UI 接管字段。
    - 保留未知字段。
    - 原子写入临时文件再替换。
    - 写完后重新读取校验。
-5. 服务运行中保存时,提示是否立即重启服务。
-6. 所有校验错误、保存成功提示、重启确认弹窗都使用简体中文。
+   - 递归提取键路径,确认没有意外丢失未知字段。
+6. 服务运行中保存时,提示是否立即重启服务。
+7. 所有校验错误、保存成功提示、重启确认弹窗都使用简体中文。
 
 验收:
 
@@ -298,6 +322,8 @@ libnode.so server.js \
 - 保存后 `config.yaml` 仍可被 SillyTavern 正常读取。
 - 配置页使用开关、下拉、数字输入、IP 输入、密码输入、锁定信息行等合适控件,不是所有字段都用普通文本框。
 - 配置页用户可见文案为简体中文,不直接显示 YAML 英文字段名。
+- 恢复默认配置时只重建 `SILLYTAVERN_CONFIG_FILE`,模板仍来自当前 `SILLYTAVERN_SERVER_DIR/default/config.yaml`。
+- 保存前后未知字段数量不减少;升级新增字段由 SillyTavern 初始化逻辑补齐。
 
 ## 7. 第七阶段:WebView
 

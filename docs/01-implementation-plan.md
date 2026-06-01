@@ -135,6 +135,41 @@ SillyTavern/
 
 `D:\SillyTavern\SillyTavern` 仅作为本方案编写和核对 SillyTavern 运行细节时的本地参考样本,不得作为 APK 打包输入,也不要移动到工程内。实际构建只使用从 [SillyTavern/SillyTavern.git](https://github.com/SillyTavern/SillyTavern.git) 拉取并锁定在 `third_party/SillyTavern/` 的源码。目录设计采用 SillyTavern 已支持的 `--configPath` 与 `--dataRoot`，避免把用户配置夹在可热更新的服务端代码里。注意：如果不传 `--configPath`，SillyTavern 默认会在 `server.js` 同级创建 `config.yaml`；Android 壳应显式传 `--configPath`，把它固定到 `SILLYTAVERN_CONFIG_FILE`。
 
+### 4.1 配置文件职责与启动参数边界
+
+SillyTavern 运行时存在两类 `config.yaml`，Android 壳必须明确区分：
+
+| 文件 | 位置 | 职责 | 是否直接生效 |
+|---|---|---|---|
+| 默认模板 | `SILLYTAVERN_SERVER_DIR/default/config.yaml` | 上游默认配置模板；用于首次创建实际配置，并在升级后补齐新增键 | 否 |
+| 实际配置 | `SILLYTAVERN_CONFIG_FILE`，即 `SILLYTAVERN_CONFIG_DIR/config.yaml` | 用户持久配置；由 `--configPath` 指定，由 App UI 结构化读写 | 是 |
+
+上游源码在 standalone 模式下默认读取 `./config.yaml`；如果传入 `--configPath`，实际配置路径改为该参数指定文件。Android 壳必须始终传 `--configPath <SILLYTAVERN_CONFIG_FILE>`，并且不要传 `--global`，因为 `--global` 模式会忽略 `--configPath` 与 `--dataRoot`。
+
+`default/config.yaml` 只随 `SILLYTAVERN_SERVER_DIR` 更新；`SILLYTAVERN_CONFIG_FILE` 必须随 App 数据持久保留。升级上游时允许模板变化，但不允许覆盖用户实际配置。首次启动或升级后，SillyTavern 的 `src/config-init.js` 会以模板为基准创建/补齐实际配置。App 侧可以在服务启动后做一次只读校验：递归提取模板与实际配置的键路径，记录“模板有但实际无 / 实际有但模板无”的差异；差异只用于日志和诊断，不得直接删除用户未知字段。
+
+命令行参数优先级高于 `config.yaml`。因此，App 只应把“路径和外壳控制”固定为 CLI 参数，用户可配置项尽量写入 `SILLYTAVERN_CONFIG_FILE`，避免 UI 修改被 CLI 覆盖后看似不生效。
+
+Android 壳固定传入：
+
+```text
+libnode.so server.js \
+  --configPath <SILLYTAVERN_CONFIG_FILE> \
+  --dataRoot <SILLYTAVERN_DATA_DIR> \
+  --browserLaunchEnabled=false
+```
+
+可选启动参数按以下策略处理：
+
+| 参数 | 策略 |
+|---|---|
+| `--port`、`--listen`、`--listenAddressIPv4`、`--listenAddressIPv6`、`--enableIPv4`、`--enableIPv6`、`--dnsPreferIPv6` | 常规情况下不传，由 `config.yaml` 决定；仅调试/一次性安全模式可临时覆盖 |
+| `--ssl`、`--certPath`、`--keyPath`、`--keyPassphrase` | 常规情况下不传，由 `config.yaml` 决定；Android WebView 场景默认保持 HTTP |
+| `--whitelist`、`--basicAuthMode`、`--corsProxy`、`--disableCsrf` | 常规情况下不传，由 `config.yaml` 决定；安全相关覆盖必须在日志中明确标注 |
+| `--enableKeepAlive`、`--requestProxyEnabled`、`--requestProxyUrl`、`--requestProxyBypass`、`--heartbeatInterval` | 常规情况下不传，由 `config.yaml` 决定；如 App 做诊断模式，可作为临时覆盖 |
+| `--global` | Android 壳禁止使用 |
+| `--autorun`、`--autorunHostname`、`--autorunPortOverride`、`--avoidLocalhost` | 已弃用，不使用；改用 `browserLaunch*` 新参数 |
+
 | 名称 | 定义 | 用途 |
 |---|---|---|
 | `APP_NATIVE_LIB_DIR` | `applicationInfo.nativeLibraryDir` | Android 解压出的原生库目录，只读可执行 |
@@ -194,6 +229,7 @@ APP_CACHE_DIR/
   2. SillyTavern 的 `src/config-init.js` 会在 `SILLYTAVERN_CONFIG_FILE` 不存在时,从 `SILLYTAVERN_SERVER_DIR/default/config.yaml` 创建配置，并在后续版本补齐缺失字段。
   3. 服务启动成功后重新读取 `SILLYTAVERN_CONFIG_FILE`,后续启动、健康检查和 WebView URL 都按该文件计算，不能把监控目标写死为 `127.0.0.1`。
   4. 对 `dataRoot`、`browserLaunch.enabled` 这类 App 管理字段,运行时以命令行参数为准；配置页可以展示但应锁定或标注“由 App 管理”。
+  5. 启动日志必须打印本次实际使用的 `SILLYTAVERN_SERVER_DIR`、`SILLYTAVERN_CONFIG_FILE`、`SILLYTAVERN_DATA_DIR` 和最终访问 URL，便于排查“改了哪个 config.yaml 才生效”。
 - **更新边界**:`SILLYTAVERN_SERVER_DIR` 是可替换层；`SILLYTAVERN_CONFIG_DIR` 与 `SILLYTAVERN_DATA_DIR` 是持久层，热更新、修复和 APK 升级都不能覆盖。
 
 `SILLYTAVERN_VERSION_FILE` 使用 JSON,首版字段固定如下:
@@ -370,6 +406,24 @@ App UI 接管的首批配置项。下表的“内部字段”仅供实现映射,
 | `ssl.enabled` | 启用 HTTPS | 开关 | Android 内置 WebView 场景建议关闭;开启时显示证书相关中文警告 |
 | `browserLaunch.hostname` / `browserLaunch.port` | 浏览器启动地址 | 只读高级信息行 | 通常由 App 根据当前配置生成 WebView URL |
 | `dataRoot` | 数据目录 | 锁定信息行 | 显示「由 App 管理」;实际运行由 `--dataRoot SILLYTAVERN_DATA_DIR` 覆盖,不允许用户修改 |
+
+高级配置与启动参数映射。下列字段首版可先做只读/高级页，但实现时必须知道它们可被 CLI 覆盖；除非进入诊断模式，否则推荐仍写入 `config.yaml`：
+
+| 内部字段 / CLI 参数 | 中文显示名称 | 推荐 UI 策略 | 规则 |
+|---|---|---|---|
+| `listenAddress.ipv6` / `--listenAddressIPv6` | IPv6 监听地址 | 高级文本输入或只读 | 默认 `[::]`;仅在启用 IPv6 时有意义 |
+| `dnsPreferIPv6` / `--dnsPreferIPv6` | DNS 优先 IPv6 | 高级开关 | 仅在 IPv6 网络稳定时启用 |
+| `enableKeepAlive` / `--enableKeepAlive` | HTTP keep-alive | 高级开关 | 遇到 `ECONNRESET` 等网络问题时可关闭/开启对照 |
+| `enableCorsProxy` / `--corsProxy` | CORS 代理 | 高级开关 | 开启后暴露 `/proxy/` 能力，需配合安全提示 |
+| `disableCsrfProtection` / `--disableCsrf` | 禁用 CSRF 保护 | 危险开关 | 默认关闭；开启前必须二次确认 |
+| `requestProxy.enabled` / `--requestProxyEnabled` | 外发请求代理 | 高级开关 | 控制所有外发 HTTP/HTTPS 请求是否走代理 |
+| `requestProxy.url` / `--requestProxyUrl` | 代理地址 | 文本输入 | 支持 http/https/socks/socks5/socks4/pac |
+| `requestProxy.bypass` / `--requestProxyBypass` | 代理绕过主机 | 列表编辑 | 默认包含 localhost、127.0.0.1 |
+| `heartbeatInterval` / `--heartbeatInterval` | 心跳文件间隔 | 数字输入 | 0 表示关闭；可用于健康检查辅助 |
+| `hostWhitelist.*` | Host 白名单 | 高级分组 | listen 模式或局域网访问时建议展示安全提示 |
+| `privateAddressWhitelist.*` | 私有地址访问白名单 | 高级分组 | 用于降低 SSRF 风险；listen 模式下建议提示开启 |
+
+禁止把弃用参数 `--autorun`、`--autorunHostname`、`--autorunPortOverride`、`--avoidLocalhost` 映射到新 UI；只保留在迁移说明或调试日志中识别。
 
 地址解析规则：SillyTavern 当前源码中 `listen` 是布尔值。`listen: false` 时 IPv4 监听 URL 是 `<scheme>://127.0.0.1:<port>`；`listen: true` 时 IPv4 绑定到 `listenAddress.ipv4`,默认 `0.0.0.0:<port>`。`0.0.0.0` 只能作为绑定地址,不能作为 WebView 目标；App 内健康检查仍使用 `<scheme>://127.0.0.1:<port>`,首页额外展示当前 WLAN/以太网局域网 IP URL 给其他设备。若 `listenAddress.ipv4` 是具体局域网 IP,则健康检查和展示 URL 均按该 IP 生成；若该值无效,按 SillyTavern 源码逻辑等价回落到 `0.0.0.0`。`scheme` 来自 `ssl.enabled`,但 Android 内置 WebView 场景建议保持 `ssl.enabled: false`。
 
