@@ -21,6 +21,8 @@ env:
   NODE_VERSION: "24.16.0"
   ANDROID_API: "28"
   ABI: "arm64-v8a"
+  # NDK r27d：libc++_shared.so 取自该版本，与 Android-Node-Builder 构建 libnode.so 所用 NDK 对齐（docs/04）。
+  NDK_VERSION: "27.3.13750724"
   # libnode.so 来源：Android-Node-Builder 的 Release（已发布 libnode.so + libnode.so.sha256）。
   # 与 third_party/Android-Node-Builder/ 子模块锁定的 tag 保持一致。
   ANB_REPO: "print-yuhuan/Android-Node-Builder"
@@ -63,7 +65,7 @@ jobs:
         run: |
           set -eux
           yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platforms;android-36" "build-tools;35.0.0" "platform-tools"
+          sdkmanager "platforms;android-36" "build-tools;35.0.0" "platform-tools" "ndk;$NDK_VERSION"
 
       # ── libnode.so 准备：实现方案 §2/§12 ────────────────────────────────
       # 来源：Actions cache → Android-Node-Builder 的 Release（统一渠道）。
@@ -103,6 +105,40 @@ jobs:
             echo "::warning::缺少 libnode.so.sha256，跳过校验。"
           fi
           file "$dest/libnode.so" || true
+
+      # libnode.so 动态依赖 NDK 的 C++ 运行库 libc++_shared.so，必须一并打进 APK，
+      # 否则真机动态链接器在 exec libnode.so 前即报 "library libc++_shared.so not found"。
+      # 始终执行（不随 libnode 缓存命中而跳过），从 NDK 复制以保证与 libnode.so 的 ABI 一致。
+      - name: 准备 libc++_shared.so（取自 NDK r27d，与 libnode.so ABI 对齐）
+        run: |
+          set -eux
+          dest="android-app/src/main/jniLibs/${{ env.ABI }}"
+          mkdir -p "$dest"
+          # 解析 NDK 根目录：优先锁定的 r27d，其次环境变量，最后取 SDK 下最新 ndk/*。
+          sdk="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          ndk="$sdk/ndk/${NDK_VERSION}"
+          if [[ ! -d "$ndk" ]]; then
+            ndk="${ANDROID_NDK_HOME:-${ANDROID_NDK_ROOT:-${ANDROID_NDK_LATEST_HOME:-}}}"
+          fi
+          if [[ -z "${ndk:-}" || ! -d "$ndk" ]]; then
+            ndk="$(ls -d "$sdk"/ndk/* 2>/dev/null | sort -V | tail -n1 || true)"
+          fi
+          test -n "${ndk:-}" -a -d "$ndk"
+          echo "使用 NDK：$ndk"
+          # 兼容查找 libc++_shared.so：旧版 NDK 在 sources/cxx-stl；r27（含 r27d）起在 toolchains 的 sysroot。
+          old="$ndk/sources/cxx-stl/llvm-libc++/libs/${{ env.ABI }}/libc++_shared.so"
+          if [[ -f "$old" ]]; then
+            src="$old"
+          else
+            src="$(find "$ndk"/toolchains/llvm/prebuilt/*/sysroot/usr/lib/aarch64-linux-android -maxdepth 1 -name libc++_shared.so 2>/dev/null | head -n1 || true)"
+          fi
+          if [[ -z "${src:-}" || ! -f "$src" ]]; then
+            echo "::error::未在 NDK ($ndk) 中找到 libc++_shared.so（已尝试 cxx-stl 旧路径与 toolchains sysroot 新路径）。"
+            exit 1
+          fi
+          cp -f "$src" "$dest/libc++_shared.so"
+          echo "libc++_shared.so 来源：$src"
+          ls -l "$dest"
 
       # ── 打包完整 SillyTavern 资产（第三/四阶段接入后启用） ─────────────────
       # 目前 App 仅消费 assets/m0-server.js 验证 M0；完整资产打包脚本已就绪，
@@ -161,6 +197,15 @@ jobs:
           cp "$src" "out/$name"
           echo "apk_path=out/$name" >> "$GITHUB_OUTPUT"
           echo "apk_name=$name" >> "$GITHUB_OUTPUT"
+
+      - name: 校验 APK 同时含 libnode.so 与 libc++_shared.so
+        run: |
+          set -eux
+          apk="${{ steps.collect.outputs.apk_path }}"
+          entries="$(unzip -l "$apk")"
+          echo "$entries" | grep -q "lib/${{ env.ABI }}/libnode.so"
+          echo "$entries" | grep -q "lib/${{ env.ABI }}/libc++_shared.so"
+          echo "APK 校验通过：同时包含 lib/${{ env.ABI }}/libnode.so 与 libc++_shared.so"
 
       - name: 上传 APK 为 workflow artifact
         uses: actions/upload-artifact@v4

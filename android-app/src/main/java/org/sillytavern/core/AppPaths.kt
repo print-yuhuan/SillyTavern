@@ -17,6 +17,13 @@ class AppPaths(context: Context) {
     /** 内置 Node 可执行文件（以 libnode.so 形式打进 jniLibs/arm64-v8a）。 */
     val nodeBin: File = File(nativeLibDir, "libnode.so")
 
+    /**
+     * Node 运行所需的 C++ 运行库。libnode.so 由 NDK/Clang 构建，动态依赖 libc++_shared.so，
+     * 必须与 libnode.so 一同打进 jniLibs/arm64-v8a；缺失时动态链接器在 exec 前即报
+     * "library libc++_shared.so not found"，Node 根本无法启动。
+     */
+    val libcxxShared: File = File(nativeLibDir, "libc++_shared.so")
+
     val filesDir: File = context.filesDir
     val cacheDir: File = context.cacheDir
 

@@ -85,6 +85,13 @@ class NodeService : Service() {
             return
         }
 
+        // libnode.so 动态依赖 libc++_shared.so；缺失则链接器在 exec 前即失败，提前给出明确提示。
+        if (!paths.libcxxShared.exists()) {
+            NodeRuntime.appendLog("[shell] " + getString(R.string.msg_libcxx_missing) + " -> " + paths.libcxxShared.absolutePath)
+            failTo(getString(R.string.notification_error_title))
+            return
+        }
+
         val config = configEditor.readOrNull(paths.configFile)
         val port = config?.port ?: ConfigEditor.DEFAULT_PORT
         val healthUrl = ConfigEditor.healthCheckUrl(config)
@@ -101,6 +108,13 @@ class NodeService : Service() {
                 put("HOME", paths.filesDir.absolutePath)
                 put("TMPDIR", paths.nodeTmpDir.absolutePath)
                 put("PATH", paths.nativeLibDir.absolutePath)
+                // 让动态链接器在 nativeLibraryDir 找到 libnode.so 依赖的 libc++_shared.so。
+                val existingLdPath = get("LD_LIBRARY_PATH")
+                put(
+                    "LD_LIBRARY_PATH",
+                    if (existingLdPath.isNullOrEmpty()) paths.nativeLibDir.absolutePath
+                    else "${paths.nativeLibDir.absolutePath}:$existingLdPath",
+                )
                 put("ST_PORT", port.toString())
             }
             val proc = pb.start()

@@ -61,6 +61,7 @@
     <!-- ── 通用提示 ────────────────────────────────────────────── -->
     <string name="msg_start_failed">服务启动失败，请查看日志</string>
     <string name="msg_node_missing">未找到内置 Node（libnode.so），该 APK 可能未正确打包</string>
+    <string name="msg_libcxx_missing">缺少 libc++_shared.so（Node 依赖的 C++ 运行库），该 APK 可能未正确打包</string>
     <string name="msg_battery_hint">为避免后台被系统杀死，建议为本应用关闭电池优化</string>
 
     <!-- ── 无障碍描述 ──────────────────────────────────────────── -->
