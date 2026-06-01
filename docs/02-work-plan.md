@@ -285,26 +285,11 @@ libnode.so server.js \
 1. `ConfigEditor` 读取 `SILLYTAVERN_CONFIG_FILE`。
 2. 文件不存在时显示「尚未生成配置」,引导用户先启动服务。
 3. 读取 `SILLYTAVERN_SERVER_DIR/default/config.yaml` 作为模板参考,只用于缺键提示和“恢复默认配置”,不得覆盖用户值。
-4. UI 接管首批字段,但界面只显示中文名称和中文说明:
-   - `port` -> 「服务端口」,数字输入框。
-   - `listen` -> 「允许局域网访问」,开关。
-   - `listenAddress.ipv4` -> 「IPv4 监听地址」,预设下拉 + IP 输入框。
-   - `listenAddress.ipv6` -> 「IPv6 监听地址」,高级输入或只读。
-   - `protocol.ipv4` -> 「启用 IPv4」,开关。
-   - `protocol.ipv6` -> 「启用 IPv6」,开关。
-   - `dnsPreferIPv6` -> 「DNS 优先 IPv6」,高级开关。
-   - `heartbeatInterval` -> 「心跳间隔」,数字输入框 + 秒单位。
-   - `enableKeepAlive` -> 「HTTP keep-alive」,高级开关。
-   - `whitelistMode` -> 「启用访问白名单」,开关。
-   - `basicAuthMode` -> 「启用访问密码」,开关。
-   - `basicAuthUser.username` -> 「访问账号」,文本输入框。
-   - `basicAuthUser.password` -> 「访问密码」,密码输入框 + 显示/隐藏按钮。
-   - `ssl.enabled` -> 「启用 HTTPS」,开关。
-   - `enableCorsProxy` -> 「CORS 代理」,高级开关。
-   - `disableCsrfProtection` -> 「禁用 CSRF 保护」,危险开关。
-   - `requestProxy.*` -> 「外发请求代理」,高级分组。
-   - `browserLaunch.enabled` -> 「自动打开浏览器」,只读锁定信息行,显示「由 App 管理」。
-   - `dataRoot` -> 「数据目录」,只读锁定信息行,显示「由 App 管理」。
+4. UI 接管的配置项分四档（完整字段表见 [01-implementation-plan.md](01-implementation-plan.md) §7;界面只显示中文名称与说明,**未列入的字段一律保留不接管、不显示**）:
+   - **基础**:`port`(服务端口)、`listen`(允许局域网访问)、`listenAddress.ipv4`(IPv4 监听地址)、`protocol.ipv4`/`protocol.ipv6`(启用 IPv4/IPv6)、`ssl.enabled`(启用 HTTPS)、`whitelistMode`(启用访问白名单)、`basicAuthMode`(启用访问密码)、`basicAuthUser.username`/`password`(访问账号/密码)。
+   - **高级**:`listenAddress.ipv6`、`dnsPreferIPv6`、`enableKeepAlive`、`heartbeatInterval`、`sessionTimeout`、`whitelist`(IP 白名单列表)、`ssl.certPath`/`keyPath`/`keyPassphrase`、`requestProxy.enabled`/`url`/`bypass`、`logging.enableAccessLog`/`minLogLevel`、`skipContentCheck`、`enableDownloadableTokenizers`、`extensions.enabled`/`autoUpdate`/`models.autoDownload`、`enableUserAccounts`(多用户账号)、`enableDiscreetLogin`(隐蔽登录,仅多用户账号开启时可编辑)。
+   - **危险**(默认收起 + 二次确认 + 中文风险提示):`enableCorsProxy`、`disableCsrfProtection`。
+   - **App 管理**(只读锁定,运行时被 CLI 覆盖):`dataRoot`、`browserLaunch.enabled`。
 5. 保存时:
    - 解析 YAML 为结构化对象。
    - 更新 UI 接管字段。
@@ -324,6 +309,9 @@ libnode.so server.js \
 - 配置页用户可见文案为简体中文,不直接显示 YAML 英文字段名。
 - 恢复默认配置时只重建 `SILLYTAVERN_CONFIG_FILE`,模板仍来自当前 `SILLYTAVERN_SERVER_DIR/default/config.yaml`。
 - 保存前后未知字段数量不减少;升级新增字段由 SillyTavern 初始化逻辑补齐。
+- 危险项（`enableCorsProxy`、`disableCsrfProtection`）开启前有二次确认与中文风险提示。
+- `enableDiscreetLogin` 仅在 `enableUserAccounts` 开启时可编辑;`basicAuthUser` 仅在 `basicAuthMode` 开启时可编辑;HTTPS 证书项仅在 `ssl.enabled` 开启时显示。
+- App 管理项（`dataRoot`、`browserLaunch.enabled`）只读锁定,不写值。
 
 ## 7. 第七阶段:WebView
 

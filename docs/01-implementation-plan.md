@@ -388,40 +388,67 @@ process = pb.start()
 - 所有变更写入后显示「需重启服务生效」;若服务运行中保存,弹出「立即重启服务?」。
 - 「恢复默认配置」也通过 App UI 执行:停止服务后删除或重建 `SILLYTAVERN_CONFIG_FILE`,再让 SillyTavern 用 `default/config.yaml` 补齐,最后重新加载到表单。
 
-App UI 接管的首批配置项。下表的“内部字段”仅供实现映射,用户界面只显示“中文显示名称”和中文说明:
+App UI 接管的配置项分四档（**其余字段一律「保留不接管」：读写时原样保留、UI 不显示**）。下表“内部字段”仅供实现映射,界面只显示“中文显示名称”。
 
-| 内部字段 | 中文显示名称 | 推荐 UI 控件 | 默认/规则 |
+**基础（默认配置页）**
+
+| 内部字段 | 中文显示名称 | 控件 | 默认/规则 |
 |---|---|---|---|
-| `port` | 服务端口 | 数字输入框 | 默认 8000;限制 1-65535;错误提示用「端口必须在 1 到 65535 之间」 |
-| `listen` | 允许局域网访问 | 开关 | 关闭表示仅本机访问;开启表示允许局域网设备访问 |
-| `listenAddress.ipv4` | IPv4 监听地址 | 预设下拉 + IP 输入框 | 常用预设:「全部地址 0.0.0.0」「仅本机 127.0.0.1」「手动输入」;仅在「允许局域网访问」开启时可编辑 |
-| `protocol.ipv4` | 启用 IPv4 | 开关 | Android 默认开启 |
-| `protocol.ipv6` | 启用 IPv6 | 开关 | Android 默认关闭 |
-| `browserLaunch.enabled` | 自动打开浏览器 | 锁定信息行 | 显示「由 App 管理」;App 固定用 WebView,运行时用 `--browserLaunchEnabled=false` 覆盖 |
-| `heartbeatInterval` | 心跳间隔 | 数字输入框 + 单位后缀「秒」 | 默认 0;可设 5-10 秒辅助判断进程活性;0 显示为「关闭」 |
-| `whitelistMode` | 启用访问白名单 | 开关 | 默认开启 |
-| `basicAuthMode` | 启用访问密码 | 开关 | 默认关闭;开启后显示账号和密码输入 |
-| `basicAuthUser.username` | 访问账号 | 文本输入框 | 启用访问密码时必填 |
-| `basicAuthUser.password` | 访问密码 | 密码输入框 + 显示/隐藏按钮 | 启用访问密码时必填 |
-| `ssl.enabled` | 启用 HTTPS | 开关 | Android 内置 WebView 场景建议关闭;开启时显示证书相关中文警告 |
-| `browserLaunch.hostname` / `browserLaunch.port` | 浏览器启动地址 | 只读高级信息行 | 通常由 App 根据当前配置生成 WebView URL |
-| `dataRoot` | 数据目录 | 锁定信息行 | 显示「由 App 管理」;实际运行由 `--dataRoot SILLYTAVERN_DATA_DIR` 覆盖,不允许用户修改 |
+| `port` | 服务端口 | 数字输入 | 默认 8000;1–65535;越界提示「端口必须在 1 到 65535 之间」 |
+| `listen` | 允许局域网访问 | 开关 | 关=仅本机;开=允许局域网设备（见下「局域网放行」注） |
+| `listenAddress.ipv4` | IPv4 监听地址 | 预设下拉 + IP 输入 | 预设「全部 0.0.0.0 / 仅本机 127.0.0.1 / 手动」;仅 listen 开启时可编辑 |
+| `protocol.ipv4` | 启用 IPv4 | 开关 | 默认开 |
+| `protocol.ipv6` | 启用 IPv6 | 开关 | 默认关 |
+| `ssl.enabled` | 启用 HTTPS | 开关 | WebView 场景建议关;开启时显示证书相关中文警告 |
+| `whitelistMode` | 启用访问白名单 | 开关 | 默认开 |
+| `basicAuthMode` | 启用访问密码 | 开关 | 默认关;开启后显示账号/密码 |
+| `basicAuthUser.username` | 访问账号 | 文本 | 启用访问密码时必填 |
+| `basicAuthUser.password` | 访问密码 | 密码框 + 显隐 | 启用访问密码时必填 |
 
-高级配置与启动参数映射。下列字段首版可先做只读/高级页，但实现时必须知道它们可被 CLI 覆盖；除非进入诊断模式，否则推荐仍写入 `config.yaml`：
+**高级（默认收起）**
 
-| 内部字段 / CLI 参数 | 中文显示名称 | 推荐 UI 策略 | 规则 |
+| 内部字段 | 中文显示名称 | 控件 | 规则 |
 |---|---|---|---|
-| `listenAddress.ipv6` / `--listenAddressIPv6` | IPv6 监听地址 | 高级文本输入或只读 | 默认 `[::]`;仅在启用 IPv6 时有意义 |
-| `dnsPreferIPv6` / `--dnsPreferIPv6` | DNS 优先 IPv6 | 高级开关 | 仅在 IPv6 网络稳定时启用 |
-| `enableKeepAlive` / `--enableKeepAlive` | HTTP keep-alive | 高级开关 | 遇到 `ECONNRESET` 等网络问题时可关闭/开启对照 |
-| `enableCorsProxy` / `--corsProxy` | CORS 代理 | 高级开关 | 开启后暴露 `/proxy/` 能力，需配合安全提示 |
-| `disableCsrfProtection` / `--disableCsrf` | 禁用 CSRF 保护 | 危险开关 | 默认关闭；开启前必须二次确认 |
-| `requestProxy.enabled` / `--requestProxyEnabled` | 外发请求代理 | 高级开关 | 控制所有外发 HTTP/HTTPS 请求是否走代理 |
-| `requestProxy.url` / `--requestProxyUrl` | 代理地址 | 文本输入 | 支持 http/https/socks/socks5/socks4/pac |
-| `requestProxy.bypass` / `--requestProxyBypass` | 代理绕过主机 | 列表编辑 | 默认包含 localhost、127.0.0.1 |
-| `heartbeatInterval` / `--heartbeatInterval` | 心跳文件间隔 | 数字输入 | 0 表示关闭；可用于健康检查辅助 |
-| `hostWhitelist.*` | Host 白名单 | 高级分组 | listen 模式或局域网访问时建议展示安全提示 |
-| `privateAddressWhitelist.*` | 私有地址访问白名单 | 高级分组 | 用于降低 SSRF 风险；listen 模式下建议提示开启 |
+| `listenAddress.ipv6` | IPv6 监听地址 | 文本 | 默认 `[::]`;仅启用 IPv6 时有意义 |
+| `dnsPreferIPv6` | DNS 优先 IPv6 | 开关 | 仅 IPv6 网络稳定时启用 |
+| `enableKeepAlive` | HTTP keep-alive | 开关 | `ECONNRESET` 等网络问题时对照排查 |
+| `heartbeatInterval` | 心跳间隔（秒） | 数字 | 0=关闭 |
+| `sessionTimeout` | 会话超时（秒） | 数字 | -1=不过期 / 0=关浏览器即过期 / 正数=空闲过期 |
+| `whitelist` | IP 白名单 | 列表编辑 | listen 开启时给局域网设备放行（见「局域网放行」注） |
+| `ssl.certPath` / `ssl.keyPath` | 证书路径 / 私钥路径 | 文本 | 仅 HTTPS 开启时显示 |
+| `ssl.keyPassphrase` | 私钥密码 | 密码框 | 仅 HTTPS 开启时;官方建议改用 CLI/env |
+| `requestProxy.enabled` | 外发请求代理 | 开关 | 控制所有外发 HTTP/HTTPS 请求是否走代理 |
+| `requestProxy.url` | 代理地址 | 文本 | http/https/socks/socks5/socks4/pac |
+| `requestProxy.bypass` | 代理绕过主机 | 列表编辑 | 默认 localhost、127.0.0.1 |
+| `logging.enableAccessLog` | 访问日志 | 开关 | — |
+| `logging.minLogLevel` | 日志级别 | 下拉 | DEBUG=0 / INFO=1 / WARN=2 / ERROR=3 |
+| `skipContentCheck` | 跳过默认内容检查 | 开关 | 跳过每次启动的内容文件复制 |
+| `enableDownloadableTokenizers` | 允许下载分词器 | 开关 | 省流量/存储可关 |
+| `extensions.enabled` | 启用 UI 扩展 | 开关 | — |
+| `extensions.autoUpdate` | 扩展自动更新 | 开关 | — |
+| `extensions.models.autoDownload` | 扩展模型自动下载 | 开关 | 省流量/存储可关 |
+| `enableUserAccounts` | 多用户账号 | 开关 | 默认关;开启后 SillyTavern 启用账号/登录 |
+| `enableDiscreetLogin` | 隐蔽登录 | 开关 | 仅 `enableUserAccounts` 开启时可编辑;登录页隐藏用户列表 |
+
+**危险（默认收起，开启需二次确认 + 中文风险提示）**
+
+| 内部字段 | 中文显示名称 | 控件 | 规则 |
+|---|---|---|---|
+| `enableCorsProxy` | 启用 CORS 代理 | 危险开关 | 暴露 `/proxy/`;开启前二次确认 |
+| `disableCsrfProtection` | 禁用 CSRF 保护 | 危险开关 | 本地建议保持开启（即不禁用）;开启前二次确认 |
+
+**App 管理（只读锁定，运行时被 CLI 覆盖）**
+
+| 内部字段 | 中文显示名称 | 控件 | 规则 |
+|---|---|---|---|
+| `dataRoot` | 数据目录 | 锁定信息行 | 显示「由 App 管理」;运行时 `--dataRoot` 覆盖 |
+| `browserLaunch.enabled` | 自动打开浏览器 | 锁定信息行 | 显示「由 App 管理」;运行时 `--browserLaunchEnabled=false` 覆盖 |
+
+**保留不接管（读写时原样保留，UI 不显示）**：反代/部署（`enableForwardedWhitelist`、`whitelistDockerHosts`、`forwardedHeaders.*`、`rateLimiting.*`、`cors.*`、`sso.*`、`hostWhitelist.*`、`privateAddressWhitelist.*`）、多用户细分（`perUserBasicAuth`）、危险脚枪（`securityOverride`、`allowKeysExposure`）、性能/缩略图/缓存（`performance.*`、`thumbnails.*`、`cacheBuster.*`）、备份（`backups.*` → 第八阶段「数据」页）、内容/下载/插件（`whitelistImportDomains`、`requestOverrides`、`git.backend`、`promptPlaceholder`、`enableServerPlugins`、`enableServerPluginsAutoUpdate`）、`browserLaunch` 其余子项（`browser`/`hostname`/`port`/`avoidLocalhost`）、以及 **LLM 提供商调优**（`openai`/`deepl`/`mistral`/`ollama`/`claude`/`gemini.*`，由 SillyTavern 网页端连接设置自行管理）。
+
+> **局域网放行**：`whitelistMode: true` 时即使开启 `listen`，白名单外的局域网 IP 仍被拒。首批方案＝暴露 `whitelist` 列表编辑由用户手动加设备/网段;二期可加「开启局域网访问时引导加入本机网段」。
+
+> **CLI 优先级 > config.yaml**：App 常规启动只固定传 `--configPath`、`--dataRoot`、`--browserLaunchEnabled=false`，故「App 管理」项恒被覆盖、UI 只读;其余接管项写入 `config.yaml` 后于（重启后）生效。
 
 禁止把弃用参数 `--autorun`、`--autorunHostname`、`--autorunPortOverride`、`--avoidLocalhost` 映射到新 UI；只保留在迁移说明或调试日志中识别。
 

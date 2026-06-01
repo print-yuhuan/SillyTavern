@@ -54,6 +54,8 @@ CI 打包阶段需要校验：
 - 常规不传：`--port`、`--listen`、`--ssl`、`--whitelist`、`--basicAuthMode`、`--requestProxy*` 等用户可配置项，避免覆盖持久配置。
 - 弃用参数 `--autorun*` 和 `--avoidLocalhost` 不再进入新实现。
 
+配置 UI 接管范围（第六阶段）以 [01-implementation-plan.md](01-implementation-plan.md) §7 的四档清单为准：UI 写回 `config.yaml` 时必须保留未知字段（保留不接管的字段原样保留），`dataRoot` / `browserLaunch.enabled` 为 App 管理项（运行时被 CLI 覆盖，不写值）。
+
 ## 发布正式版（v* Tag）
 
 1. 配置签名 Secrets（仓库 Settings → Secrets and variables → Actions）：

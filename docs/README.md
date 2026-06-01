@@ -17,3 +17,4 @@
 - Android 运行时实际生效的是 `SILLYTAVERN_CONFIG_FILE`，必须通过 `--configPath` 显式传给 `server.js`。
 - `--dataRoot` 指向 App 持久数据目录；`--browserLaunchEnabled=false` 禁止服务端自行拉起外部浏览器。
 - CLI 参数优先级高于 `config.yaml`，因此用户可配置项应写入实际配置文件，常规启动不要再用 CLI 覆盖。
+- 配置 UI 接管范围见 [01](01-implementation-plan.md) §7（四档：基础 / 高级 / 危险 / App 管理）；保存 `config.yaml` 必须保留未接管的未知字段。
