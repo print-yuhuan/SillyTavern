@@ -8,9 +8,9 @@
 |---|---|---|
 | 第一阶段 | 仓库骨架 | ✅ 已完成 |
 | 第二阶段 | M0 真机 PoC | ✅ 已完成（真机验证 Node 启动成功） |
-| 第三阶段 | SillyTavern 资产解压 | ✅ 已完成（代码+CI 就绪，待真机回归） |
-| 第四阶段 | 完整 NodeService | ✅ 已完成（代码就绪，待真机回归） |
-| 第五阶段 | App UI | ⬜ 未开始（首页 M0 版已具雏形） |
+| 第三阶段 | SillyTavern 资产解压 | ✅ 已完成（真机验证通过） |
+| 第四阶段 | 完整 NodeService | ✅ 已完成（真机验证通过） |
+| 第五阶段 | App UI | ✅ 已完成（控制台多页 UI；待真机回归） |
 | 第六阶段 | 配置 UI 接管 config.yaml | ⬜ 未开始（已具备结构化读取与 URL 推导） |
 | 第七阶段 | WebView | 🚧 基础实现已就绪，待联调 |
 | 第八阶段 | 数据/备份/修复 | ⬜ 未开始 |
@@ -86,7 +86,7 @@ CI 验证（已通过）：
 
 真机回归修复（漏包 webpack.config.js）：首启 `server.js` 报 `ERR_MODULE_NOT_FOUND: webpack.config.js` —— 打包 include 漏了上游根文件 `webpack.config.js`（被 `src/middleware/webpack-serve.js` 直接 import）。修复：打包脚本 include 补入该文件 + 必需项断言 + 打包后 `unzip -Z1` 校验关键文件；`AppPaths.serverReady()` 增加 `webpack.config.js` 检查；首启 webpack 在手机上编译前端库较慢，`HEALTH_TIMEOUT_MS` 由 60s 放宽到 180s。
 
-待真机回归：首启解压一次、升级保配置数据、`version.json` 字段完整。
+真机验证（已通过）：首启自动解压、建立 server/config/data 三层；内容文件落入 `data/`（`_css`/`_errors`/`default-user` 等）。
 
 ---
 
@@ -101,13 +101,30 @@ CI 验证（已通过）：
 - 首启时 `config.yaml` 由 SillyTavern 按 `--configPath` 新建；`awaitConfigFile` 等其出现后重读，按真实 `port`/`listen`/`listenAddress.ipv4`/`ssl.enabled` 计算健康检查与局域网 URL。
 - 健康检查轮询、状态机（Stopped/Starting/Running/Stopping/Error）、退出码捕获沿用 M1 实现。
 
-待真机回归：完整 SillyTavern 可起停、首页显示 URL/端口/运行时长、首启自动生成 `config.yaml`。
+真机验证（已通过）：完整 SillyTavern 1.18.0 启动并监听 `127.0.0.1:8000`；首启 `config.yaml` 由 `--configPath` 自动创建；可停止并再次启动。webpack 编译前端库首启 **17.166s**、第二次命中缓存仅 **999ms**（缓存在 `dataRoot/_webpack`）——印证 `HEALTH_TIMEOUT_MS` 调到 180s 的必要性。
 
 新增核对事项：
 
 - 启动参数需最终统一为 `--configPath <SILLYTAVERN_CONFIG_FILE>`、`--dataRoot <SILLYTAVERN_DATA_DIR>`、`--browserLaunchEnabled=false`；常规启动不应再传 `--port`、`--listen` 等会覆盖配置文件的参数。
 - 日志需明确打印默认模板 `SILLYTAVERN_SERVER_DIR/default/config.yaml` 与实际生效配置 `SILLYTAVERN_CONFIG_FILE`，避免后续调试误改模板。
 - 需要补一项只读诊断：递归比较模板配置与实际配置的键路径，记录缺失/多余键；只用于诊断，不删除用户未知字段。
+
+---
+
+## 第五阶段：App UI ✅
+
+完成情况（原生控制台多页 UI，实现方案 §6）：
+
+- `LauncherActivity` 精简为只承载主题与窗口；导航与页面移到 `ui/`。
+- `ui/Screens.kt`：`AppRoot` 浅层状态导航（首页 hub + 配置/日志/数据/关于，`BackHandler` 返回首页，未引入导航库）；开屏统一请求通知权限并触发资产解压。
+- `ui/HomeScreen.kt`：状态卡（状态/URL/局域网/运行时长）、启动/停止/打开界面、二级入口（配置/日志/数据/关于）、最近日志摘要 +「查看完整日志」。
+- 日志页：完整日志 + 复制/清空。
+- 配置页：只读展示当前 `config.yaml`（端口/局域网/IPv4 地址/协议/HTTPS/白名单/访问密码/心跳）；编辑接管留待第六阶段。
+- 数据页：备份/恢复/修复占位（第八阶段），展示数据目录路径。
+- 关于页：App 版本、内置 SillyTavern 版本、Node 版本、架构（读 `version.json`）+ AGPL 源码链接。
+- 文案全简体中文；状态不只靠颜色（圆点 + 文字标签 + 无障碍描述）；关键按钮含文本与 contentDescription。
+
+待真机回归：各页导航与返回键、配置只读展示、关于版本信息显示正常。
 
 ---
 

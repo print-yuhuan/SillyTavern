@@ -28,6 +28,7 @@
     <string name="home_address_label">监听地址</string>
     <string name="home_uptime_label">运行时长</string>
     <string name="home_recent_logs">最近日志</string>
+    <string name="home_view_full_logs">查看完整日志</string>
     <string name="home_no_address">尚未就绪</string>
     <string name="home_uptime_zero">00:00:00</string>
 
@@ -39,6 +40,7 @@
     <string name="action_view_logs">查看日志</string>
     <string name="action_check_update">检查更新</string>
     <string name="action_backup">备份 / 恢复</string>
+    <string name="action_about">关于</string>
 
     <!-- ── 日志页 ──────────────────────────────────────────────── -->
     <string name="logs_title">运行日志</string>
@@ -69,6 +71,38 @@
     <string name="install_preparing">正在准备 SillyTavern（首次启动需解压资产，约数十秒）…</string>
     <string name="install_files_extracted">已解压 %1$d 个文件</string>
     <string name="install_failed">SillyTavern 资产解压失败，请重试</string>
+
+    <!-- ── 配置页（第五阶段只读查看；编辑接管见第六阶段） ──────── -->
+    <string name="config_title">配置</string>
+    <string name="cfg_not_generated">尚未生成配置，请先在首页启动一次服务</string>
+    <string name="cfg_readonly_note">当前为只读查看；配置编辑将在后续版本开放</string>
+    <string name="cfg_port">服务端口</string>
+    <string name="cfg_lan">允许局域网访问</string>
+    <string name="cfg_ipv4_addr">IPv4 监听地址</string>
+    <string name="cfg_ipv4">启用 IPv4</string>
+    <string name="cfg_ipv6">启用 IPv6</string>
+    <string name="cfg_https">启用 HTTPS</string>
+    <string name="cfg_whitelist">启用访问白名单</string>
+    <string name="cfg_basic_auth">启用访问密码</string>
+    <string name="cfg_heartbeat">心跳间隔</string>
+    <string name="value_on">开启</string>
+    <string name="value_off">关闭</string>
+    <string name="value_seconds">%1$d 秒</string>
+
+    <!-- ── 数据页（第八阶段实现备份/恢复/修复） ─────────────────── -->
+    <string name="data_title">数据</string>
+    <string name="data_intro">备份、恢复与修复服务端文件将在后续版本提供</string>
+    <string name="data_dir_label">数据目录</string>
+
+    <!-- ── 关于页 ──────────────────────────────────────────────── -->
+    <string name="about_title">关于</string>
+    <string name="about_app_version">App 版本</string>
+    <string name="about_st_version">内置 SillyTavern</string>
+    <string name="about_node_version">Node 版本</string>
+    <string name="about_abi">目标架构</string>
+    <string name="about_license_title">许可证</string>
+    <string name="about_license_desc">本应用内置基于 AGPL-3.0 许可的 SillyTavern，源代码公开。</string>
+    <string name="about_source_button">查看源码与许可证</string>
 
     <!-- ── 无障碍描述 ──────────────────────────────────────────── -->
     <string name="cd_status_indicator">当前服务状态指示</string>
