@@ -1,22 +1,25 @@
 package org.sillytavern.config
 
+import org.yaml.snakeyaml.DumperOptions
 import org.yaml.snakeyaml.Yaml
 import java.io.File
 
 /**
- * config.yaml 的结构化读写（实现方案 §7）。
+ * config.yaml 的结构化读写（实现方案 §7，第六阶段接管范围）。
  *
  * 设计约束：
  * - 仅用 YAML 解析/序列化处理结构化数据，禁止字符串替换改 YAML。
- * - 写回时保留 App 尚未接管的未知字段，原子写入临时文件再替换。
+ * - 写回时**保留 App 未接管的未知字段**：以原文件 Map 为基底，仅覆盖接管字段后整树 dump。
+ * - 原子写入：先写 `.tmp` 再 rename 替换，避免写一半损坏配置。
+ * - `dataRoot` / `browserLaunch.enabled` 为 App 管理项，运行时由 CLI 覆盖，**不写回**（只读展示）。
  *
- * 注意：M0 阶段仅使用读取与健康检查 URL 推导；完整的「App UI 接管写回」在第六阶段实现。
- * 写回 API 已预留 [write]，当前以保留未知字段的方式落地，后续在配置页接入。
+ * 注：SnakeYAML 的 Map 读写不保留 YAML 注释；配置由 App UI 管理、用户不手改原文件，可接受。
  */
 class ConfigEditor {
 
-    /** 与 SillyTavern 源码字段对应的最小配置视图（仅 App 需要的部分）。 */
+    /** 接管字段的结构化视图（仅 App 接管的部分；未知字段不在此，写回时原样保留）。 */
     data class STConfig(
+        // 基础
         val port: Int = DEFAULT_PORT,
         val listen: Boolean = false,
         val listenAddressIpv4: String = "0.0.0.0",
@@ -25,16 +28,43 @@ class ConfigEditor {
         val sslEnabled: Boolean = false,
         val whitelistMode: Boolean = true,
         val basicAuthMode: Boolean = false,
+        val basicAuthUsername: String = "user",
+        val basicAuthPassword: String = "password",
+        // 高级
+        val listenAddressIpv6: String = "[::]",
+        val dnsPreferIPv6: Boolean = false,
+        val enableKeepAlive: Boolean = false,
         val heartbeatInterval: Int = 0,
+        val sessionTimeout: Int = -1,
+        val whitelist: List<String> = listOf("::1", "127.0.0.1"),
+        val sslCertPath: String = "./certs/cert.pem",
+        val sslKeyPath: String = "./certs/privkey.pem",
+        val sslKeyPassphrase: String = "",
+        val requestProxyEnabled: Boolean = false,
+        val requestProxyUrl: String = "",
+        val requestProxyBypass: List<String> = listOf("localhost", "127.0.0.1"),
+        val loggingEnableAccessLog: Boolean = true,
+        val loggingMinLogLevel: Int = 0,
+        val skipContentCheck: Boolean = false,
+        val enableDownloadableTokenizers: Boolean = true,
+        val extensionsEnabled: Boolean = true,
+        val extensionsAutoUpdate: Boolean = true,
+        val extensionsModelsAutoDownload: Boolean = true,
+        val enableUserAccounts: Boolean = false,
+        val enableDiscreetLogin: Boolean = false,
+        // 危险
+        val enableCorsProxy: Boolean = false,
+        val disableCsrfProtection: Boolean = false,
+        // App 管理（只读展示，不写回）
+        val dataRoot: String = "./data",
+        val browserLaunchEnabled: Boolean = true,
     )
 
     /** 读取配置文件；不存在或解析失败返回 null（调用方按默认值兜底）。 */
     fun readOrNull(file: File): STConfig? {
         if (!file.exists()) return null
         return try {
-            @Suppress("UNCHECKED_CAST")
-            val root = file.inputStream().use { Yaml().load<Any?>(it) } as? Map<String, Any?>
-                ?: return null
+            val root = loadRoot(file) ?: return null
             STConfig(
                 port = (root["port"] as? Number)?.toInt() ?: DEFAULT_PORT,
                 listen = root["listen"] as? Boolean ?: false,
@@ -44,12 +74,126 @@ class ConfigEditor {
                 sslEnabled = nested(root, "ssl", "enabled") as? Boolean ?: false,
                 whitelistMode = root["whitelistMode"] as? Boolean ?: true,
                 basicAuthMode = root["basicAuthMode"] as? Boolean ?: false,
+                basicAuthUsername = nested(root, "basicAuthUser", "username") as? String ?: "user",
+                basicAuthPassword = nested(root, "basicAuthUser", "password") as? String ?: "password",
+                listenAddressIpv6 = nested(root, "listenAddress", "ipv6") as? String ?: "[::]",
+                dnsPreferIPv6 = root["dnsPreferIPv6"] as? Boolean ?: false,
+                enableKeepAlive = root["enableKeepAlive"] as? Boolean ?: false,
                 heartbeatInterval = (root["heartbeatInterval"] as? Number)?.toInt() ?: 0,
+                sessionTimeout = (root["sessionTimeout"] as? Number)?.toInt() ?: -1,
+                whitelist = stringList(root["whitelist"]) ?: listOf("::1", "127.0.0.1"),
+                sslCertPath = nested(root, "ssl", "certPath") as? String ?: "./certs/cert.pem",
+                sslKeyPath = nested(root, "ssl", "keyPath") as? String ?: "./certs/privkey.pem",
+                sslKeyPassphrase = nested(root, "ssl", "keyPassphrase") as? String ?: "",
+                requestProxyEnabled = nested(root, "requestProxy", "enabled") as? Boolean ?: false,
+                requestProxyUrl = nested(root, "requestProxy", "url") as? String ?: "",
+                requestProxyBypass = stringList(nested(root, "requestProxy", "bypass")) ?: listOf("localhost", "127.0.0.1"),
+                loggingEnableAccessLog = nested(root, "logging", "enableAccessLog") as? Boolean ?: true,
+                loggingMinLogLevel = (nested(root, "logging", "minLogLevel") as? Number)?.toInt() ?: 0,
+                skipContentCheck = root["skipContentCheck"] as? Boolean ?: false,
+                enableDownloadableTokenizers = root["enableDownloadableTokenizers"] as? Boolean ?: true,
+                extensionsEnabled = nested(root, "extensions", "enabled") as? Boolean ?: true,
+                extensionsAutoUpdate = nested(root, "extensions", "autoUpdate") as? Boolean ?: true,
+                extensionsModelsAutoDownload = nested(root, "extensions", "models", "autoDownload") as? Boolean ?: true,
+                enableUserAccounts = root["enableUserAccounts"] as? Boolean ?: false,
+                enableDiscreetLogin = root["enableDiscreetLogin"] as? Boolean ?: false,
+                enableCorsProxy = root["enableCorsProxy"] as? Boolean ?: false,
+                disableCsrfProtection = root["disableCsrfProtection"] as? Boolean ?: false,
+                dataRoot = root["dataRoot"] as? String ?: "./data",
+                browserLaunchEnabled = nested(root, "browserLaunch", "enabled") as? Boolean ?: true,
             )
         } catch (_: Exception) {
             null
         }
     }
+
+    /**
+     * 结构化写回：以原文件 Map 为基底保留未知字段，仅覆盖接管字段，原子写入。
+     * @return 是否成功（写后重读能解析即成功）。
+     */
+    fun write(file: File, c: STConfig): Boolean {
+        return try {
+            val root: MutableMap<String, Any?> =
+                (if (file.exists()) loadRoot(file) else null) ?: LinkedHashMap()
+            applyTo(root, c)
+
+            val options = DumperOptions().apply {
+                defaultFlowStyle = DumperOptions.FlowStyle.BLOCK
+                isPrettyFlow = true
+                indent = 2
+                width = 4096 // 避免长字符串被折行
+            }
+            val text = Yaml(options).dump(root)
+
+            file.parentFile?.mkdirs()
+            val tmp = File(file.parentFile, "${file.name}.tmp")
+            tmp.writeText(text, Charsets.UTF_8)
+            if (!tmp.renameTo(file)) {
+                // 个别文件系统 rename 失败时回退直接写
+                file.writeText(text, Charsets.UTF_8)
+                tmp.delete()
+            }
+            // 写后重读校验：能解析即认为成功
+            loadRoot(file) != null
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    /** 仅覆盖接管字段；不触碰 dataRoot / browserLaunch（App 管理）与其它未知字段。 */
+    private fun applyTo(root: MutableMap<String, Any?>, c: STConfig) {
+        root["port"] = c.port
+        root["listen"] = c.listen
+        nestedMap(root, "listenAddress").apply {
+            put("ipv4", c.listenAddressIpv4)
+            put("ipv6", c.listenAddressIpv6)
+        }
+        nestedMap(root, "protocol").apply {
+            put("ipv4", c.protocolIpv4)
+            put("ipv6", c.protocolIpv6)
+        }
+        root["dnsPreferIPv6"] = c.dnsPreferIPv6
+        nestedMap(root, "ssl").apply {
+            put("enabled", c.sslEnabled)
+            put("certPath", c.sslCertPath)
+            put("keyPath", c.sslKeyPath)
+            put("keyPassphrase", c.sslKeyPassphrase)
+        }
+        root["whitelistMode"] = c.whitelistMode
+        root["whitelist"] = ArrayList(c.whitelist)
+        root["basicAuthMode"] = c.basicAuthMode
+        nestedMap(root, "basicAuthUser").apply {
+            put("username", c.basicAuthUsername)
+            put("password", c.basicAuthPassword)
+        }
+        root["enableCorsProxy"] = c.enableCorsProxy
+        nestedMap(root, "requestProxy").apply {
+            put("enabled", c.requestProxyEnabled)
+            put("url", c.requestProxyUrl)
+            put("bypass", ArrayList(c.requestProxyBypass))
+        }
+        root["sessionTimeout"] = c.sessionTimeout
+        root["disableCsrfProtection"] = c.disableCsrfProtection
+        nestedMap(root, "logging").apply {
+            put("enableAccessLog", c.loggingEnableAccessLog)
+            put("minLogLevel", c.loggingMinLogLevel)
+        }
+        root["heartbeatInterval"] = c.heartbeatInterval
+        root["enableKeepAlive"] = c.enableKeepAlive
+        root["skipContentCheck"] = c.skipContentCheck
+        root["enableDownloadableTokenizers"] = c.enableDownloadableTokenizers
+        nestedMap(root, "extensions").apply {
+            put("enabled", c.extensionsEnabled)
+            put("autoUpdate", c.extensionsAutoUpdate)
+            nestedMap(this, "models").put("autoDownload", c.extensionsModelsAutoDownload)
+        }
+        root["enableUserAccounts"] = c.enableUserAccounts
+        root["enableDiscreetLogin"] = c.enableDiscreetLogin
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun loadRoot(file: File): MutableMap<String, Any?>? =
+        file.inputStream().use { Yaml().load<Any?>(it) } as? MutableMap<String, Any?>
 
     private fun nested(root: Map<String, Any?>, vararg keys: String): Any? {
         var cur: Any? = root
@@ -59,6 +203,18 @@ class ConfigEditor {
         }
         return cur
     }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun nestedMap(parent: MutableMap<String, Any?>, key: String): MutableMap<String, Any?> {
+        val existing = parent[key]
+        if (existing is MutableMap<*, *>) return existing as MutableMap<String, Any?>
+        val created = LinkedHashMap<String, Any?>()
+        parent[key] = created
+        return created
+    }
+
+    private fun stringList(value: Any?): List<String>? =
+        (value as? List<*>)?.map { it.toString() }
 
     companion object {
         const val DEFAULT_PORT = 8000

@@ -11,7 +11,7 @@
 | 第三阶段 | SillyTavern 资产解压 | ✅ 已完成（真机验证通过） |
 | 第四阶段 | 完整 NodeService | ✅ 已完成（真机验证通过） |
 | 第五阶段 | App UI | ✅ 已完成（控制台多页 UI；待真机回归） |
-| 第六阶段 | 配置 UI 接管 config.yaml | 🚧 接管范围已定稿（四档，见 01 §7），待实现 |
+| 第六阶段 | 配置 UI 接管 config.yaml | ✅ 已完成（四档接管，结构化写回；待真机回归） |
 | 第七阶段 | WebView | 🚧 基础实现已就绪，待联调 |
 | 第八阶段 | 数据/备份/修复 | ⬜ 未开始 |
 | 第九阶段 | 打包与 CI | 🚧 build-apk 已验证可产出 debug APK；release/打包脚本待 Tag 触发验证 |
@@ -125,6 +125,24 @@ CI 验证（已通过）：
 - 文案全简体中文；状态不只靠颜色（圆点 + 文字标签 + 无障碍描述）；关键按钮含文本与 contentDescription。
 
 待真机回归：各页导航与返回键、配置只读展示、关于版本信息显示正常。
+
+---
+
+## 第六阶段：配置 UI 接管 config.yaml ✅
+
+完成情况（接管范围见 01 §7 四档清单）：
+
+- **`ConfigEditor` 重写**：`STConfig` 覆盖全部接管字段（含嵌套 listenAddress/protocol/ssl/basicAuthUser/requestProxy/logging/extensions）；`readOrNull` 结构化读取;`write` 以**原文件 Map 为基底保留未知字段**，仅覆盖接管字段后整树 dump，**原子写入**（`.tmp` + rename），写后重读校验。`dataRoot`/`browserLaunch.enabled` 只读不写回。保留 `healthCheckUrl`/`lanAccessEnabled`/`isValidIpv4` 供 NodeService 复用。
+- **配置页改为可编辑表单** [ConfigScreen.kt](../android-app/src/main/java/org/sillytavern/ui/ConfigScreen.kt)：
+  - 基础卡 + 高级/危险可折叠分区（默认收起）+ App 管理只读卡。
+  - 控件按类型：开关 / 数字 / 文本 / 密码（显隐）/ IP 预设 / 多行列表（whitelist、bypass 每行一项）/ 日志级别下拉。
+  - 校验：端口 1–65535、IPv4 格式（listen 开启时）、访问密码账号/密码非空；不通过则禁用保存。
+  - 联动可编辑：IPv4 地址↔listen、basicAuthUser↔basicAuthMode、SSL 证书项↔ssl.enabled、代理 url/bypass↔requestProxy.enabled、隐蔽登录↔多用户账号（关多用户连带关隐蔽登录）。
+  - 危险项（CORS 代理 / 禁用 CSRF）开启走二次确认弹窗 + 中文风险提示。
+  - 保存：写回后若服务运行中弹「立即重启?」（停服→等 STOPPED→启动）；「恢复默认」停服 + 删除 config.yaml，交由下次启动 SillyTavern 重建。
+- `Screens.kt` 的 `DetailScaffold`/`InfoRow` 提为 `internal` 复用；旧只读 ConfigScreen 移除。
+
+待真机回归：改端口/开关后保存→重启生效;运行中保存弹重启;未知字段保存后不丢;危险项二次确认;恢复默认。
 
 ---
 

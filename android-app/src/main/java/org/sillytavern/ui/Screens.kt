@@ -50,7 +50,6 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import org.sillytavern.BuildConfig
 import org.sillytavern.R
-import org.sillytavern.config.ConfigEditor
 import org.sillytavern.core.AppPaths
 import org.sillytavern.core.AssetInstaller
 import org.sillytavern.core.NodeRuntime
@@ -97,7 +96,7 @@ fun AppRoot() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun DetailScaffold(
+internal fun DetailScaffold(
     title: String,
     onBack: () -> Unit,
     content: @Composable ColumnScope.() -> Unit,
@@ -163,47 +162,7 @@ private fun LogsScreen(onBack: () -> Unit) {
     }
 }
 
-// ── 配置页（只读查看；完整接管在第六阶段） ───────────────────────────────
-@Composable
-private fun ConfigScreen(onBack: () -> Unit) {
-    val context = LocalContext.current
-    val config by produceState<ConfigEditor.STConfig?>(initialValue = null) {
-        value = withContext(Dispatchers.IO) { ConfigEditor().readOrNull(AppPaths(context).configFile) }
-    }
-    DetailScaffold(title = stringResource(R.string.config_title), onBack = onBack) {
-        val c = config
-        if (c == null) {
-            Text(stringResource(R.string.cfg_not_generated), style = MaterialTheme.typography.bodyMedium)
-        } else {
-            val on = stringResource(R.string.value_on)
-            val off = stringResource(R.string.value_off)
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    InfoRow(stringResource(R.string.cfg_port), c.port.toString())
-                    InfoRow(stringResource(R.string.cfg_lan), if (c.listen) on else off)
-                    InfoRow(stringResource(R.string.cfg_ipv4_addr), c.listenAddressIpv4)
-                    InfoRow(stringResource(R.string.cfg_ipv4), if (c.protocolIpv4) on else off)
-                    InfoRow(stringResource(R.string.cfg_ipv6), if (c.protocolIpv6) on else off)
-                    InfoRow(stringResource(R.string.cfg_https), if (c.sslEnabled) on else off)
-                    InfoRow(stringResource(R.string.cfg_whitelist), if (c.whitelistMode) on else off)
-                    InfoRow(stringResource(R.string.cfg_basic_auth), if (c.basicAuthMode) on else off)
-                    InfoRow(
-                        stringResource(R.string.cfg_heartbeat),
-                        if (c.heartbeatInterval > 0) {
-                            stringResource(R.string.value_seconds, c.heartbeatInterval)
-                        } else {
-                            off
-                        },
-                    )
-                }
-            }
-            Text(stringResource(R.string.cfg_readonly_note), style = MaterialTheme.typography.bodySmall)
-        }
-    }
-}
+// 配置页 ConfigScreen 见 ConfigScreen.kt（第六阶段：可编辑表单，结构化写回 config.yaml）。
 
 // ── 数据页（备份/恢复/修复占位，第八阶段实现） ───────────────────────────
 @Composable
@@ -260,7 +219,7 @@ private fun AboutScreen(onBack: () -> Unit) {
 }
 
 @Composable
-private fun InfoRow(label: String, value: String) {
+internal fun InfoRow(label: String, value: String) {
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
         Text(label, style = MaterialTheme.typography.bodyMedium)
         Text(value, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
