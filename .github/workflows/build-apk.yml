@@ -1,8 +1,10 @@
 name: Build APK
 
 # 触发规则：
-# - push v* Tag        → 构建 release 包、签名、发布到 GitHub Releases（实现方案 §12）
-# - push 分支 / PR / 手动 → 仅构建 debug 包并作为 workflow artifact（M0 真机验证用，不发布 Release）
+# - push v* Tag         → 构建 release 包、签名、发布到 GitHub Releases（正式版，实现方案 §12）
+# - push main/master    → 构建 debug 包，发布到滚动预发布 Release「ci-debug」并更新 workflow artifact
+#                         （Releases 下载不限速；Actions artifact 下载会限速）
+# - PR                  → 仅构建 debug 包并作为 workflow artifact（不发布 Release）
 on:
   push:
     branches: [main, master]
@@ -167,6 +169,36 @@ jobs:
           path: ${{ steps.collect.outputs.apk_path }}
           if-no-files-found: error
           retention-days: 14
+
+      # ── 调试包发布到滚动预发布 Release（push main/master） ─────────────────
+      # Releases 下载不限速，Actions artifact 下载会限速；故 main 的 debug 包也发到 Release。
+      # 使用固定 tag「ci-debug」+ 固定资产名，--clobber 覆盖旧包，下载 URL 稳定且不堆积历史。
+      # 下载地址：
+      #   https://github.com/<owner>/<repo>/releases/download/ci-debug/SillyTavern-android-arm64-v8a-debug-latest.apk
+      - name: 发布 debug 包到滚动预发布 Release（push main，下载不限速）
+        if: steps.vars.outputs.is_release == 'false' && github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eux
+          tag="ci-debug"
+          asset="out/SillyTavern-android-arm64-v8a-debug-latest.apk"
+          cp "${{ steps.collect.outputs.apk_path }}" "$asset"
+          {
+            echo "SillyTavern Android（arm64-v8a）调试包 · 滚动更新（始终为最新提交）"
+            echo
+            echo "- 提交：${GITHUB_SHA}"
+            echo "- 构建号：#${{ github.run_number }}"
+            echo "- 内置 Node ${NODE_VERSION} / Android API ${ANDROID_API}"
+            echo
+            echo "本预发布由推送 main 自动刷新，仅保留最新调试包。Releases 下载不限速（Actions artifact 会限速）。"
+          } > "$RUNNER_TEMP/notes.md"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release edit "$tag" --prerelease --title "调试包（最新）" --notes-file "$RUNNER_TEMP/notes.md"
+          else
+            gh release create "$tag" --prerelease --title "调试包（最新）" --notes-file "$RUNNER_TEMP/notes.md" --target "$GITHUB_SHA"
+          fi
+          gh release upload "$tag" "$asset" --clobber
 
       - name: 发布到 GitHub Releases（仅 v* Tag）
         if: steps.vars.outputs.is_release == 'true'
