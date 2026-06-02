@@ -152,11 +152,11 @@ CI 验证（已通过）：
 
 - WebView 设置：`javaScriptEnabled`、`domStorageEnabled`、`databaseEnabled`、`allowFileAccess`/`allowContentAccess`、`mediaPlaybackRequiresUserGesture=false` 等。
 - 文件选择：`onShowFileChooser` → SAF（导入角色卡 PNG 等）。
-- 下载：`DownloadListener` 经 `DownloadManager` 落到 Downloads，文件名用 `URLUtil.guessFileName`，并带上 `Cookie`/`User-Agent`（支持启用访问密码后的下载）；非 http(s) 链接给出中文提示。
+- 下载（像浏览器，全类型）：`http(s)` 经 `DownloadManager` 落 Downloads（带 `Cookie`/`User-Agent`，支持访问密码后的下载）；**`blob:`/`data:`**（SillyTavern 客户端导出 JSON/JSONL/ZIP/PNG 等常用此）由注入 JS 读成 base64 回传，Android 端解码经 `MediaStore.Downloads`（API 29+）写入下载目录。不再按类型/scheme 拒绝。
 - 麦克风：`onPermissionRequest` → 运行时请求 `RECORD_AUDIO`（TTS/STT）。
 - 顶部控制栏：**图标按钮**（返回 / 刷新 / 用浏览器打开，矢量 drawable）；标题取页面标题。
 - 沉浸配色：注入脚本读取并跟随 SillyTavern 的 `<meta name=theme-color>`（= 主题 `blur_tint_color`，主题切换经 `MutationObserver` 实时回传），把**工具栏 + 系统栏 + WebView 背景**染成该色；图标/标题/系统栏图标按亮度自动取反色。`WindowCompat.setDecorFitsSystemWindows(false)` 让系统栏透出主题色。
-- 加载进度：`onProgressChanged`/`onPageStarted` → 顶部水平 `ProgressBar`（1–99% 显示）。
+- 不显示加载横条：移除顶部进度条（避免与网页观感割裂）。
 - 失败重连：主框架 `onReceivedError` → 中文 Toast 提示，用户点刷新重连。
 - 系统返回键：`onBackPressedDispatcher`，`canGoBack` 优先后退，否则退出。
 - 边到边：Android 15 强制 edge-to-edge，已用 `ViewCompat.setOnApplyWindowInsetsListener` 给根视图加系统栏/输入法内边距，避免内容被系统栏遮挡。

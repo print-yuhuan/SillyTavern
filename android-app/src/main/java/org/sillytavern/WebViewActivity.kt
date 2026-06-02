@@ -2,13 +2,17 @@ package org.sillytavern
 
 import android.annotation.SuppressLint
 import android.app.DownloadManager
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Environment
+import android.provider.MediaStore
+import android.util.Base64
 import android.view.Gravity
 import android.view.View
 import android.webkit.CookieManager
@@ -23,7 +27,6 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.ImageButton
 import android.widget.LinearLayout
-import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -34,20 +37,22 @@ import androidx.core.graphics.ColorUtils
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
+import org.json.JSONObject
+import java.io.File
+import java.net.URLDecoder
 
 /**
  * 承载 SillyTavern 前端的 WebView（实现方案 §8 / 工作计划第七阶段）。
  *
  * - 经典「全窗口 View 承载」：WebView 置于 weight=1 的 LinearLayout，触摸/渲染最稳。
- * - 不设 useWideViewPort/loadWithOverviewMode：布局视口=视图边界，避免 SillyTavern 100vh/innerHeight
- *   计算错乱导致输入栏跑顶。
- * - 顶栏为图标按钮（返回/刷新/用浏览器打开）；工具栏 + 系统栏 + WebView 背景跟随网页
- *   `<meta name=theme-color>`（SillyTavern 主题色），实现沉浸；图标/状态栏图标按亮度自动取反色。
+ * - 不设 useWideViewPort/loadWithOverviewMode：布局视口=视图边界，避免输入栏跑顶。
+ * - 顶栏图标按钮（返回/刷新/用浏览器打开），不显示加载横条。
+ * - 工具栏 + 系统栏 + WebView 背景跟随网页 `<meta name=theme-color>`，沉浸。
+ * - 下载像浏览器：http(s) 走 DownloadManager；blob:/data: 读成 base64 回传后写入下载目录，全类型支持。
  */
 class WebViewActivity : ComponentActivity() {
 
     private lateinit var webView: WebView
-    private lateinit var progressBar: ProgressBar
     private lateinit var titleView: TextView
     private lateinit var topBar: LinearLayout
     private val iconButtons = mutableListOf<ImageButton>()
@@ -102,18 +107,14 @@ class WebViewActivity : ComponentActivity() {
                 allowContentAccess = true
                 mediaPlaybackRequiresUserGesture = false
                 javaScriptCanOpenWindowsAutomatically = true
-                // 不设 useWideViewPort/loadWithOverviewMode：让布局视口等于 WebView 视图边界，
-                // 使 window.innerHeight / 100vh / 100dvh 与可视区域一致（否则 SillyTavern 布局塌陷）。
+                // 不设 useWideViewPort/loadWithOverviewMode：布局视口=视图边界，避免 100vh/innerHeight 错乱。
             }
-            // 仅加载本机可信的 SillyTavern；接口只接收颜色字符串，无敏感能力。
+            // 仅加载本机可信的 SillyTavern；接口只接收颜色字符串与下载数据，无其它敏感能力。
             addJavascriptInterface(ThemeBridge(), "STAndroid")
             webViewClient = object : WebViewClient() {
-                override fun onPageStarted(view: WebView?, u: String?, favicon: Bitmap?) {
-                    progressBar.visibility = View.VISIBLE
-                }
+                override fun onPageStarted(view: WebView?, u: String?, favicon: Bitmap?) = Unit
 
                 override fun onPageFinished(view: WebView?, u: String?) {
-                    progressBar.visibility = View.GONE
                     injectThemeColorWatcher()
                 }
 
@@ -147,7 +148,7 @@ class WebViewActivity : ComponentActivity() {
         webView.loadUrl(url)
     }
 
-    /** 根布局：顶栏 + 进度条 + WebView(weight 1)。 */
+    /** 根布局：顶栏 + WebView(weight 1)。无加载进度条。 */
     private fun buildLayout(): View {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -178,12 +179,6 @@ class WebViewActivity : ComponentActivity() {
             runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(webView.url ?: pageUrl))) }
         })
         root.addView(topBar, LinearLayout.LayoutParams(MATCH, WRAP))
-
-        progressBar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
-            max = 100
-            visibility = View.GONE
-        }
-        root.addView(progressBar, LinearLayout.LayoutParams(MATCH, WRAP))
 
         root.addView(webView, LinearLayout.LayoutParams(MATCH, 0, 1f))
         return root
@@ -252,9 +247,20 @@ class WebViewActivity : ComponentActivity() {
             val color = parseCssColor(value) ?: return
             runOnUiThread { applyThemeColor(color) }
         }
+
+        /** blob:/data: 下载：JS 把内容读成 base64 dataURL 回传，这里解码写入下载目录（在 JS 线程，非主线程）。 */
+        @JavascriptInterface
+        fun onBlobDownload(dataUrl: String, fileName: String, mime: String) {
+            val bytes = decodeDataUrl(dataUrl)
+            if (bytes == null) {
+                toastMain(getString(R.string.web_download_failed))
+                return
+            }
+            saveToDownloads(bytes, fileName.ifBlank { "download" }, mime.ifBlank { null })
+        }
     }
 
-    /** 解析 CSS 颜色：#rgb / #rrggbb / #aarrggbb / rgb()/rgba()（忽略 alpha，按浏览器对 theme-color 的处理取不透明）。 */
+    /** 解析 CSS 颜色：#rgb / #rrggbb / #aarrggbb / rgb()/rgba()（忽略 alpha 取不透明）。 */
     private fun parseCssColor(input: String): Int? {
         val s = input.trim()
         return try {
@@ -291,11 +297,6 @@ class WebViewActivity : ComponentActivity() {
     }
 
     private fun createChromeClient() = object : WebChromeClient() {
-        override fun onProgressChanged(view: WebView?, newProgress: Int) {
-            progressBar.progress = newProgress
-            progressBar.visibility = if (newProgress in 1..99) View.VISIBLE else View.GONE
-        }
-
         override fun onReceivedTitle(view: WebView?, title: String?) {
             if (!title.isNullOrBlank()) titleView.text = title
         }
@@ -332,14 +333,23 @@ class WebViewActivity : ComponentActivity() {
         }
     }
 
-    /** 经 DownloadManager 下载导出文件；带上 Cookie/UA 以支持启用访问密码后的下载。 */
+    // ── 下载：像浏览器一样支持全部类型（http/https/blob/data） ────────────────
     private fun handleDownload(url: String, userAgent: String?, contentDisposition: String?, mimeType: String?) {
-        if (!url.startsWith("http")) {
-            Toast.makeText(this, R.string.web_download_unsupported, Toast.LENGTH_SHORT).show()
-            return
+        val fileName = URLUtil.guessFileName(url, contentDisposition, mimeType)
+        when {
+            url.startsWith("blob:", true) ->
+                webView.evaluateJavascript(blobDownloadJs(url, fileName, mimeType ?: ""), null)
+            url.startsWith("data:", true) -> {
+                val bytes = decodeDataUrl(url)
+                if (bytes != null) saveToDownloads(bytes, fileName, mimeType) else toastMain(getString(R.string.web_download_failed))
+            }
+            else -> httpDownload(url, userAgent, contentDisposition, mimeType, fileName)
         }
+    }
+
+    /** http(s)：经 DownloadManager 下载（任意类型），带 Cookie/UA 以支持访问密码后的下载。 */
+    private fun httpDownload(url: String, userAgent: String?, contentDisposition: String?, mimeType: String?, fileName: String) {
         try {
-            val fileName = URLUtil.guessFileName(url, contentDisposition, mimeType)
             val request = DownloadManager.Request(Uri.parse(url)).apply {
                 setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
                 setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName)
@@ -350,11 +360,82 @@ class WebViewActivity : ComponentActivity() {
                 if (!userAgent.isNullOrBlank()) addRequestHeader("User-Agent", userAgent)
             }
             getSystemService<DownloadManager>()?.enqueue(request)
-            Toast.makeText(this, getString(R.string.web_download_started, fileName), Toast.LENGTH_SHORT).show()
+            toastMain(getString(R.string.web_download_started, fileName))
         } catch (_: Exception) {
-            Toast.makeText(this, R.string.web_download_failed, Toast.LENGTH_SHORT).show()
+            toastMain(getString(R.string.web_download_failed))
         }
     }
+
+    /** 在页面上下文读取 blob 内容为 base64 dataURL 回传（blob: 只能在创建它的文档内访问）。 */
+    private fun blobDownloadJs(blobUrl: String, fileName: String, mime: String): String {
+        val u = JSONObject.quote(blobUrl)
+        val n = JSONObject.quote(fileName)
+        val m = JSONObject.quote(mime)
+        return """
+            (function(){
+              try{
+                var xhr=new XMLHttpRequest();
+                xhr.open('GET',$u,true);
+                xhr.responseType='blob';
+                xhr.onload=function(){
+                  if(xhr.status===200||xhr.status===0){
+                    var r=new FileReader();
+                    r.onloadend=function(){ if(window.STAndroid&&typeof r.result==='string'){ window.STAndroid.onBlobDownload(r.result,$n,$m); } };
+                    r.readAsDataURL(xhr.response);
+                  }
+                };
+                xhr.send();
+              }catch(e){}
+            })();
+        """.trimIndent()
+    }
+
+    private fun decodeDataUrl(dataUrl: String): ByteArray? = try {
+        val comma = dataUrl.indexOf(',')
+        if (!dataUrl.startsWith("data:") || comma < 0) {
+            null
+        } else {
+            val meta = dataUrl.substring(5, comma)
+            val payload = dataUrl.substring(comma + 1)
+            if (meta.contains("base64", ignoreCase = true)) {
+                Base64.decode(payload, Base64.DEFAULT)
+            } else {
+                URLDecoder.decode(payload, "UTF-8").toByteArray(Charsets.UTF_8)
+            }
+        }
+    } catch (_: Exception) {
+        null
+    }
+
+    /** 把字节写入公共下载目录（API 29+ 走 MediaStore，无需权限；API 28 落 App 外部下载目录）。 */
+    private fun saveToDownloads(bytes: ByteArray, fileName: String, mime: String?) {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val values = ContentValues().apply {
+                    put(MediaStore.Downloads.DISPLAY_NAME, fileName)
+                    if (!mime.isNullOrBlank()) put(MediaStore.Downloads.MIME_TYPE, mime)
+                    put(MediaStore.Downloads.IS_PENDING, 1)
+                }
+                val uri = contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                    ?: throw IllegalStateException("MediaStore insert 失败")
+                contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
+                contentResolver.update(
+                    uri,
+                    ContentValues().apply { put(MediaStore.Downloads.IS_PENDING, 0) },
+                    null,
+                    null,
+                )
+            } else {
+                val dir = getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+                File(dir, fileName).writeBytes(bytes)
+            }
+            toastMain(getString(R.string.web_download_started, fileName))
+        } catch (_: Exception) {
+            toastMain(getString(R.string.web_download_failed))
+        }
+    }
+
+    private fun toastMain(msg: String) = runOnUiThread { Toast.makeText(this, msg, Toast.LENGTH_SHORT).show() }
 
     override fun onDestroy() {
         if (this::webView.isInitialized) {
