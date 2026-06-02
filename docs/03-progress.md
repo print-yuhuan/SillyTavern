@@ -12,7 +12,7 @@
 | 第四阶段 | 完整 NodeService | ✅ 已完成（真机验证通过） |
 | 第五阶段 | App UI | ✅ 已完成（控制台多页 UI；待真机回归） |
 | 第六阶段 | 配置 UI 接管 config.yaml | ✅ 已完成（四档接管，结构化写回；待真机回归） |
-| 第七阶段 | WebView | 🚧 基础实现已就绪，待联调 |
+| 第七阶段 | WebView | ✅ 已完成（顶栏控制 + 进度 + 重连 + 健壮下载；待真机回归） |
 | 第八阶段 | 数据/备份/修复 | ⬜ 未开始 |
 | 第九阶段 | 打包与 CI | 🚧 build-apk 已验证可产出 debug APK；release/打包脚本待 Tag 触发验证 |
 
@@ -143,6 +143,25 @@ CI 验证（已通过）：
 - `Screens.kt` 的 `DetailScaffold`/`InfoRow` 提为 `internal` 复用；旧只读 ConfigScreen 移除。
 
 待真机回归：改端口/开关后保存→重启生效;运行中保存弹重启;未知字段保存后不丢;危险项二次确认;恢复默认。
+
+---
+
+## 第七阶段：WebView ✅
+
+完成情况（实现方案 §8）。`WebViewActivity` 由纯 View 改为 Compose（与全局一致），保留原有可用逻辑并补齐联调项：
+
+- WebView 设置：`javaScriptEnabled`、`domStorageEnabled`、`databaseEnabled`、`allowFileAccess`/`allowContentAccess`、`mediaPlaybackRequiresUserGesture=false` 等。
+- 文件选择：`onShowFileChooser` → SAF（导入角色卡 PNG 等）。
+- 下载：`DownloadListener` 经 `DownloadManager` 落到 Downloads，文件名用 `URLUtil.guessFileName`，并带上 `Cookie`/`User-Agent`（支持启用访问密码后的下载）；非 http(s) 链接给出中文提示。
+- 麦克风：`onPermissionRequest` → 运行时请求 `RECORD_AUDIO`（TTS/STT）。
+- 顶部控制栏：返回（`canGoBack` 优先，否则关闭）、刷新、用浏览器打开；标题显示页面标题。
+- 加载进度：`onProgressChanged` → 顶部 `LinearProgressIndicator`（1–99% 显示）。
+- 失败重连：主框架 `onReceivedError` → 覆盖层提示 + 「重新连接」按钮重新加载。
+- 系统返回键：`BackHandler`，`canGoBack` 优先后退，否则退出。
+- 仅在服务 Running（健康检查通过）时由首页「打开界面」进入；WebView 始终加载 `127.0.0.1` 健康 URL，`network_security_config` 已放行回环明文。
+- 生命周期：`DisposableEffect` 销毁 WebView，避免泄漏。
+
+待真机回归：加载 SillyTavern 前端、导入角色卡、导出/下载文件、返回键与刷新/重连行为。
 
 ---
 
