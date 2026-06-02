@@ -6,11 +6,14 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.graphics.Bitmap
 import android.os.Build
 import android.os.IBinder
 import android.os.SystemClock
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
+import androidx.core.graphics.drawable.toBitmap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -46,6 +49,12 @@ class NodeService : Service() {
 
     private lateinit var paths: AppPaths
     private val configEditor = ConfigEditor()
+
+    /** 通知大图标：用 App 启动图标（彩色 logo），使下拉通知显示原色 logo。 */
+    private val notificationLargeIcon: Bitmap? by lazy {
+        val size = (48 * resources.displayMetrics.density).toInt().coerceAtLeast(96)
+        runCatching { ContextCompat.getDrawable(this, R.mipmap.ic_launcher)?.toBitmap(size, size) }.getOrNull()
+    }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -285,6 +294,7 @@ class NodeService : Service() {
 
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_service)
+            .setColor(0xFFFF0000.toInt())
             .setContentTitle(title)
             .setContentText(text)
             .setContentIntent(openIntent)
@@ -292,6 +302,8 @@ class NodeService : Service() {
             .setOnlyAlertOnce(true)
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
+        // 下拉通知显示彩色 logo（状态栏小图标受系统限制只能单色）。
+        notificationLargeIcon?.let { builder.setLargeIcon(it) }
 
         if (ongoing) {
             val stopIntent = PendingIntent.getService(
