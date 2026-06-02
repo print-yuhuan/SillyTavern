@@ -163,7 +163,9 @@ CI 验证（已通过）：
 - 调试：`setWebContentsDebuggingEnabled(true)`，可经桌面 Chrome `chrome://inspect` 远程调试前端。
 - 生命周期：`onDestroy` 中移除并销毁 WebView，避免泄漏。
 
-真机回归修复（触摸失效 / 控件消失）：第七阶段初版用 Compose `AndroidView` + `enableEdgeToEdge` 承载 WebView，导致 SillyTavern 前端**无法触控、部分控件消失**（重型 SPA 按视口尺寸布局，Compose 包裹下尺寸/命中区域错乱）。已回退为全窗口 View 承载（`LinearLayout` + `weight=1`，Android 最稳的 WebView 写法）。
+真机回归修复 1（触摸失效 / 控件消失）：第七阶段初版用 Compose `AndroidView` + `enableEdgeToEdge` 承载 WebView，导致 SillyTavern 前端**无法触控、部分控件消失**（重型 SPA 按视口尺寸布局，Compose 包裹下尺寸/命中区域错乱）。已回退为全窗口 View 承载（`LinearLayout` + `weight=1`，Android 最稳的 WebView 写法）。
+
+真机回归修复 2（底部输入栏跑到顶部）：SillyTavern 用 `100dvh`/`100vh` 与 `--doc-height=window.innerHeight` 计算 `#sheld` 高度。`useWideViewPort=true`+`loadWithOverviewMode=true` 使布局视口按 meta 而非视图边界计算，`innerHeight`/`100vh` 与可视高度不一致 → 聊天区塌陷、输入栏顶到上方。修复：去掉这两项设置（布局视口=视图边界，与浏览器标签页一致），并为 Activity 加 `windowSoftInputMode=adjustResize`（配合 `interactive-widget=resizes-content` 处理软键盘）。
 
 待真机回归：加载 SillyTavern 前端可正常**触控交互**、控件完整、导入角色卡、导出/下载、返回/刷新/用浏览器打开。
 

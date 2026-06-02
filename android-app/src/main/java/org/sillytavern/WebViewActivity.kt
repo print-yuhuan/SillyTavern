@@ -95,8 +95,9 @@ class WebViewActivity : ComponentActivity() {
                 allowContentAccess = true
                 mediaPlaybackRequiresUserGesture = false
                 javaScriptCanOpenWindowsAutomatically = true
-                useWideViewPort = true
-                loadWithOverviewMode = true
+                // 不设 useWideViewPort/loadWithOverviewMode：让布局视口等于 WebView 视图边界，
+                // 使 window.innerHeight / 100vh / 100dvh 与可视区域一致。SillyTavern 据此计算
+                // --doc-height 与 #sheld 高度；二者不一致会导致聊天区塌陷、底部输入栏顶到上方。
             }
             webViewClient = object : WebViewClient() {
                 override fun onPageStarted(view: WebView?, u: String?, favicon: Bitmap?) {
