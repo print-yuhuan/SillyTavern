@@ -148,20 +148,24 @@ CI 验证（已通过）：
 
 ## 第七阶段：WebView ✅
 
-完成情况（实现方案 §8）。`WebViewActivity` 由纯 View 改为 Compose（与全局一致），保留原有可用逻辑并补齐联调项：
+完成情况（实现方案 §8）。`WebViewActivity` 采用**全窗口 View 承载**（WebView 置于 `weight=1` 的 `LinearLayout`，触摸/渲染最稳），顶栏为轻量控制条：
 
 - WebView 设置：`javaScriptEnabled`、`domStorageEnabled`、`databaseEnabled`、`allowFileAccess`/`allowContentAccess`、`mediaPlaybackRequiresUserGesture=false` 等。
 - 文件选择：`onShowFileChooser` → SAF（导入角色卡 PNG 等）。
 - 下载：`DownloadListener` 经 `DownloadManager` 落到 Downloads，文件名用 `URLUtil.guessFileName`，并带上 `Cookie`/`User-Agent`（支持启用访问密码后的下载）；非 http(s) 链接给出中文提示。
 - 麦克风：`onPermissionRequest` → 运行时请求 `RECORD_AUDIO`（TTS/STT）。
-- 顶部控制栏：返回（`canGoBack` 优先，否则关闭）、刷新、用浏览器打开；标题显示页面标题。
-- 加载进度：`onProgressChanged` → 顶部 `LinearProgressIndicator`（1–99% 显示）。
-- 失败重连：主框架 `onReceivedError` → 覆盖层提示 + 「重新连接」按钮重新加载。
-- 系统返回键：`BackHandler`，`canGoBack` 优先后退，否则退出。
+- 顶部控制栏：返回（`canGoBack` 优先，否则关闭）、刷新、用浏览器打开；标题取页面标题。
+- 加载进度：`onProgressChanged`/`onPageStarted` → 顶部水平 `ProgressBar`（1–99% 显示）。
+- 失败重连：主框架 `onReceivedError` → 中文 Toast 提示，用户点刷新重连。
+- 系统返回键：`onBackPressedDispatcher`，`canGoBack` 优先后退，否则退出。
+- 边到边：Android 15 强制 edge-to-edge，已用 `ViewCompat.setOnApplyWindowInsetsListener` 给根视图加系统栏/输入法内边距，避免内容被系统栏遮挡。
 - 仅在服务 Running（健康检查通过）时由首页「打开界面」进入；WebView 始终加载 `127.0.0.1` 健康 URL，`network_security_config` 已放行回环明文。
-- 生命周期：`DisposableEffect` 销毁 WebView，避免泄漏。
+- 调试：`setWebContentsDebuggingEnabled(true)`，可经桌面 Chrome `chrome://inspect` 远程调试前端。
+- 生命周期：`onDestroy` 中移除并销毁 WebView，避免泄漏。
 
-待真机回归：加载 SillyTavern 前端、导入角色卡、导出/下载文件、返回键与刷新/重连行为。
+真机回归修复（触摸失效 / 控件消失）：第七阶段初版用 Compose `AndroidView` + `enableEdgeToEdge` 承载 WebView，导致 SillyTavern 前端**无法触控、部分控件消失**（重型 SPA 按视口尺寸布局，Compose 包裹下尺寸/命中区域错乱）。已回退为全窗口 View 承载（`LinearLayout` + `weight=1`，Android 最稳的 WebView 写法）。
+
+待真机回归：加载 SillyTavern 前端可正常**触控交互**、控件完整、导入角色卡、导出/下载、返回/刷新/用浏览器打开。
 
 ---
 
