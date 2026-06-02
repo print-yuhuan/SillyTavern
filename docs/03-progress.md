@@ -154,7 +154,8 @@ CI 验证（已通过）：
 - 文件选择：`onShowFileChooser` → SAF（导入角色卡 PNG 等）。
 - 下载：`DownloadListener` 经 `DownloadManager` 落到 Downloads，文件名用 `URLUtil.guessFileName`，并带上 `Cookie`/`User-Agent`（支持启用访问密码后的下载）；非 http(s) 链接给出中文提示。
 - 麦克风：`onPermissionRequest` → 运行时请求 `RECORD_AUDIO`（TTS/STT）。
-- 顶部控制栏：返回（`canGoBack` 优先，否则关闭）、刷新、用浏览器打开；标题取页面标题。
+- 顶部控制栏：**图标按钮**（返回 / 刷新 / 用浏览器打开，矢量 drawable）；标题取页面标题。
+- 沉浸配色：注入脚本读取并跟随 SillyTavern 的 `<meta name=theme-color>`（= 主题 `blur_tint_color`，主题切换经 `MutationObserver` 实时回传），把**工具栏 + 系统栏 + WebView 背景**染成该色；图标/标题/系统栏图标按亮度自动取反色。`WindowCompat.setDecorFitsSystemWindows(false)` 让系统栏透出主题色。
 - 加载进度：`onProgressChanged`/`onPageStarted` → 顶部水平 `ProgressBar`（1–99% 显示）。
 - 失败重连：主框架 `onReceivedError` → 中文 Toast 提示，用户点刷新重连。
 - 系统返回键：`onBackPressedDispatcher`，`canGoBack` 优先后退，否则退出。

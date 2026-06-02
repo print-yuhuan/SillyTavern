@@ -5,12 +5,14 @@ import android.app.DownloadManager
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
+import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
 import android.view.Gravity
 import android.view.View
 import android.webkit.CookieManager
+import android.webkit.JavascriptInterface
 import android.webkit.PermissionRequest
 import android.webkit.URLUtil
 import android.webkit.ValueCallback
@@ -19,7 +21,7 @@ import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import android.widget.Button
+import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
@@ -28,23 +30,27 @@ import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.getSystemService
+import androidx.core.graphics.ColorUtils
 import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 
 /**
  * 承载 SillyTavern 前端的 WebView（实现方案 §8 / 工作计划第七阶段）。
  *
- * 采用经典的「全窗口 View 承载」：WebView 放入带 weight=1 的 LinearLayout，触摸/渲染最稳；
- * 顶部为轻量控制条（返回/刷新/用浏览器打开），下方细进度条。仅加载本机 127.0.0.1 健康 URL，
- * 加载前已在首页通过健康检查（仅 Running 可进入）。
- *
- * 注：曾用 Compose(AndroidView)+edge-to-edge 承载，导致 SillyTavern 触摸失效/布局塌陷，已回退。
+ * - 经典「全窗口 View 承载」：WebView 置于 weight=1 的 LinearLayout，触摸/渲染最稳。
+ * - 不设 useWideViewPort/loadWithOverviewMode：布局视口=视图边界，避免 SillyTavern 100vh/innerHeight
+ *   计算错乱导致输入栏跑顶。
+ * - 顶栏为图标按钮（返回/刷新/用浏览器打开）；工具栏 + 系统栏 + WebView 背景跟随网页
+ *   `<meta name=theme-color>`（SillyTavern 主题色），实现沉浸；图标/状态栏图标按亮度自动取反色。
  */
 class WebViewActivity : ComponentActivity() {
 
     private lateinit var webView: WebView
     private lateinit var progressBar: ProgressBar
     private lateinit var titleView: TextView
+    private lateinit var topBar: LinearLayout
+    private val iconButtons = mutableListOf<ImageButton>()
     private var pageUrl: String = ""
 
     private var filePathCallback: ValueCallback<Array<Uri>>? = null
@@ -72,8 +78,9 @@ class WebViewActivity : ComponentActivity() {
     @Suppress("DEPRECATION") // WebSettings.databaseEnabled 在新版为 no-op，保留以兼容旧设备
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        WindowCompat.setDecorFitsSystemWindows(window, false)
 
-        // 允许桌面 Chrome 通过 chrome://inspect 远程调试 SillyTavern 前端（便于排查渲染/触摸问题）。
+        // 允许桌面 Chrome 通过 chrome://inspect 远程调试 SillyTavern 前端。
         WebView.setWebContentsDebuggingEnabled(true)
 
         val url = intent.getStringExtra(EXTRA_URL)
@@ -96,9 +103,10 @@ class WebViewActivity : ComponentActivity() {
                 mediaPlaybackRequiresUserGesture = false
                 javaScriptCanOpenWindowsAutomatically = true
                 // 不设 useWideViewPort/loadWithOverviewMode：让布局视口等于 WebView 视图边界，
-                // 使 window.innerHeight / 100vh / 100dvh 与可视区域一致。SillyTavern 据此计算
-                // --doc-height 与 #sheld 高度；二者不一致会导致聊天区塌陷、底部输入栏顶到上方。
+                // 使 window.innerHeight / 100vh / 100dvh 与可视区域一致（否则 SillyTavern 布局塌陷）。
             }
+            // 仅加载本机可信的 SillyTavern；接口只接收颜色字符串，无敏感能力。
+            addJavascriptInterface(ThemeBridge(), "STAndroid")
             webViewClient = object : WebViewClient() {
                 override fun onPageStarted(view: WebView?, u: String?, favicon: Bitmap?) {
                     progressBar.visibility = View.VISIBLE
@@ -106,6 +114,7 @@ class WebViewActivity : ComponentActivity() {
 
                 override fun onPageFinished(view: WebView?, u: String?) {
                     progressBar.visibility = View.GONE
+                    injectThemeColorWatcher()
                 }
 
                 override fun onReceivedError(
@@ -126,6 +135,8 @@ class WebViewActivity : ComponentActivity() {
 
         setContentView(buildLayout())
         applyInsets()
+        // 初始用 SillyTavern 默认 theme-color (#333)，页面就绪后由注入脚本回传实际主题色。
+        applyThemeColor(0xFF333333.toInt())
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
@@ -143,12 +154,12 @@ class WebViewActivity : ComponentActivity() {
             layoutParams = LinearLayout.LayoutParams(MATCH, MATCH)
         }
 
-        val bar = LinearLayout(this).apply {
+        topBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(4), dp(4), dp(4), dp(4))
+            setPadding(dp(4), dp(2), dp(4), dp(2))
         }
-        bar.addView(toolbarButton(getString(R.string.web_back)) {
+        topBar.addView(iconButton(R.drawable.ic_web_back, getString(R.string.web_back)) {
             if (webView.canGoBack()) webView.goBack() else finish()
         })
         titleView = TextView(this).apply {
@@ -159,14 +170,14 @@ class WebViewActivity : ComponentActivity() {
             setPadding(dp(8), 0, dp(8), 0)
             layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f)
         }
-        bar.addView(titleView)
-        bar.addView(toolbarButton(getString(R.string.web_reload)) {
+        topBar.addView(titleView)
+        topBar.addView(iconButton(R.drawable.ic_web_refresh, getString(R.string.web_reload)) {
             webView.reload()
         })
-        bar.addView(toolbarButton(getString(R.string.web_open_external)) {
+        topBar.addView(iconButton(R.drawable.ic_web_open_external, getString(R.string.web_open_external)) {
             runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(webView.url ?: pageUrl))) }
         })
-        root.addView(bar, LinearLayout.LayoutParams(MATCH, WRAP))
+        root.addView(topBar, LinearLayout.LayoutParams(MATCH, WRAP))
 
         progressBar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
             max = 100
@@ -178,24 +189,104 @@ class WebViewActivity : ComponentActivity() {
         return root
     }
 
-    private fun toolbarButton(label: String, onClick: () -> Unit): Button =
-        Button(this, null, android.R.attr.borderlessButtonStyle).apply {
-            text = label
-            textSize = 13f
-            minWidth = 0
-            minimumWidth = 0
-            setPadding(dp(10), 0, dp(10), 0)
+    private fun iconButton(iconRes: Int, desc: String, onClick: () -> Unit): ImageButton =
+        ImageButton(this, null, android.R.attr.borderlessButtonStyle).apply {
+            setImageResource(iconRes)
+            contentDescription = desc
+            val size = dp(40)
+            layoutParams = LinearLayout.LayoutParams(size, size)
+            setPadding(dp(8), dp(8), dp(8), dp(8))
             setOnClickListener { onClick() }
+            iconButtons.add(this)
         }
 
-    /** 处理 Android 15 强制 edge-to-edge：把系统栏/输入法内边距加到根视图，避免内容被系统栏遮挡。 */
+    /** Android 15 强制 edge-to-edge：把系统栏/输入法内边距加到根视图，内容不被系统栏遮挡。 */
     private fun applyInsets() {
-        val root = window.decorView.findViewById<View>(android.R.id.content)
-        ViewCompat.setOnApplyWindowInsetsListener(root) { v, insets ->
+        val content = window.decorView.findViewById<View>(android.R.id.content)
+        ViewCompat.setOnApplyWindowInsetsListener(content) { v, insets ->
             val sys = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             val ime = insets.getInsets(WindowInsetsCompat.Type.ime())
             v.setPadding(sys.left, sys.top, sys.right, maxOf(sys.bottom, ime.bottom))
             insets
+        }
+    }
+
+    /** 注入脚本：读取并跟随 SillyTavern 的 <meta name=theme-color>（主题切换时回传）。 */
+    private fun injectThemeColorWatcher() {
+        val js = """
+            (function(){
+              try{
+                var send=function(){
+                  var m=document.querySelector('meta[name=theme-color]');
+                  if(window.STAndroid&&m){window.STAndroid.onThemeColor(m.getAttribute('content')||'');}
+                };
+                send();
+                var m=document.querySelector('meta[name=theme-color]');
+                if(m&&!m.__stObserved){m.__stObserved=true;new MutationObserver(send).observe(m,{attributes:true,attributeFilter:['content']});}
+              }catch(e){}
+            })();
+        """.trimIndent()
+        webView.evaluateJavascript(js, null)
+    }
+
+    /** 把工具栏 + 系统栏 + WebView 背景染成网页主题色，前景按亮度取反色。 */
+    private fun applyThemeColor(color: Int) {
+        val opaque = (color and 0x00FFFFFF) or 0xFF000000.toInt()
+        val light = ColorUtils.calculateLuminance(opaque) > 0.5
+        val fg = if (light) 0xFF202020.toInt() else 0xFFFFFFFF.toInt()
+
+        topBar.setBackgroundColor(opaque)
+        titleView.setTextColor(fg)
+        iconButtons.forEach { it.setColorFilter(fg) }
+        webView.setBackgroundColor(opaque)
+        window.decorView.setBackgroundColor(opaque)
+
+        val controller = WindowCompat.getInsetsController(window, window.decorView)
+        controller.isAppearanceLightStatusBars = light
+        controller.isAppearanceLightNavigationBars = light
+    }
+
+    private inner class ThemeBridge {
+        @JavascriptInterface
+        fun onThemeColor(value: String) {
+            val color = parseCssColor(value) ?: return
+            runOnUiThread { applyThemeColor(color) }
+        }
+    }
+
+    /** 解析 CSS 颜色：#rgb / #rrggbb / #aarrggbb / rgb()/rgba()（忽略 alpha，按浏览器对 theme-color 的处理取不透明）。 */
+    private fun parseCssColor(input: String): Int? {
+        val s = input.trim()
+        return try {
+            when {
+                s.startsWith("#") -> {
+                    val hex = s.substring(1)
+                    when (hex.length) {
+                        3 -> Color.rgb(
+                            (hex[0].toString().repeat(2)).toInt(16),
+                            (hex[1].toString().repeat(2)).toInt(16),
+                            (hex[2].toString().repeat(2)).toInt(16),
+                        )
+                        6, 8 -> Color.parseColor("#$hex")
+                        else -> null
+                    }
+                }
+                s.startsWith("rgb") -> {
+                    val nums = s.substringAfter('(').substringBefore(')').split(',')
+                    if (nums.size >= 3) {
+                        Color.rgb(
+                            nums[0].trim().toFloat().toInt().coerceIn(0, 255),
+                            nums[1].trim().toFloat().toInt().coerceIn(0, 255),
+                            nums[2].trim().toFloat().toInt().coerceIn(0, 255),
+                        )
+                    } else {
+                        null
+                    }
+                }
+                else -> null
+            }
+        } catch (_: Exception) {
+            null
         }
     }
 
