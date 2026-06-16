@@ -34,7 +34,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
@@ -50,7 +49,6 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import org.sillytavern.BuildConfig
 import org.sillytavern.R
-import org.sillytavern.core.AppPaths
 import org.sillytavern.core.AssetInstaller
 import org.sillytavern.core.NodeRuntime
 
@@ -163,25 +161,7 @@ private fun LogsScreen(onBack: () -> Unit) {
 }
 
 // 配置页 ConfigScreen 见 ConfigScreen.kt（第六阶段：可编辑表单，结构化写回 config.yaml）。
-
-// ── 数据页（备份/恢复/修复占位，第八阶段实现） ───────────────────────────
-@Composable
-private fun DataScreen(onBack: () -> Unit) {
-    val context = LocalContext.current
-    val dataDir = remember { AppPaths(context).dataDir.absolutePath }
-    DetailScaffold(title = stringResource(R.string.data_title), onBack = onBack) {
-        Text(stringResource(R.string.data_intro), style = MaterialTheme.typography.bodyMedium)
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                Text(stringResource(R.string.data_dir_label), style = MaterialTheme.typography.titleSmall)
-                Text(dataDir, style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace))
-            }
-        }
-    }
-}
+// 数据页 DataScreen 见 DataScreen.kt（第八阶段：备份/恢复/修复/清理缓存）。
 
 // ── 关于页（版本信息 + 源码/许可证） ─────────────────────────────────────
 @Composable

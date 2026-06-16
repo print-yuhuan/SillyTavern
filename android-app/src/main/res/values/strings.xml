@@ -155,10 +155,48 @@
     <string name="cd_reveal_password">显示或隐藏密码</string>
     <string name="cd_section_toggle">展开或收起</string>
 
-    <!-- ── 数据页（第八阶段实现备份/恢复/修复） ─────────────────── -->
+    <!-- ── 数据页（第八阶段：备份/恢复/修复/清理缓存） ──────────── -->
     <string name="data_title">数据</string>
-    <string name="data_intro">备份、恢复与修复服务端文件将在后续版本提供</string>
-    <string name="data_dir_label">数据目录</string>
+    <string name="data_intro">备份你的配置与聊天数据，或在出现问题时修复服务端文件、清理缓存。</string>
+    <!-- 存储占用 -->
+    <string name="data_storage_title">存储占用</string>
+    <string name="data_size_data">聊天数据</string>
+    <string name="data_size_config">配置</string>
+    <string name="data_size_cache">缓存</string>
+    <string name="data_size_calculating">计算中…</string>
+    <!-- 备份与恢复 -->
+    <string name="data_backup_title">备份与恢复</string>
+    <string name="data_backup_desc">导出包含配置与聊天数据的备份文件，可在重装或更换设备后恢复（不含可再生缓存）。</string>
+    <string name="data_export">导出备份</string>
+    <string name="data_import">从备份恢复</string>
+    <string name="data_no_data">尚无可备份的数据，请先启动一次服务。</string>
+    <!-- 维护 -->
+    <string name="data_maintenance_title">维护</string>
+    <string name="data_repair">修复服务端文件</string>
+    <string name="data_repair_desc">重新解压内置的 SillyTavern 程序文件，不影响你的配置和聊天数据。</string>
+    <string name="data_clean_cache">清理缓存</string>
+    <string name="data_clean_desc">删除临时文件与可再生缓存，释放存储空间；下次启动可能稍慢。</string>
+    <!-- 确认弹窗 -->
+    <string name="data_stop_hint">该操作需要先停止服务，确认后将自动停止再继续。</string>
+    <string name="data_restore_confirm_title">从备份恢复</string>
+    <string name="data_restore_confirm_msg">恢复将覆盖当前的配置和聊天数据，且无法撤销。建议先导出当前数据。确定恢复？</string>
+    <string name="data_repair_confirm_title">修复服务端文件</string>
+    <string name="data_repair_confirm_msg">将重新解压服务端程序文件。你的配置和聊天数据不会受影响。确定修复？</string>
+    <string name="data_clean_confirm_title">清理缓存</string>
+    <string name="data_clean_confirm_msg">将删除临时文件与可再生缓存（含前端编译缓存），下次启动可能稍慢。不影响配置和聊天数据。确定清理？</string>
+    <!-- 进行中 / 结果 -->
+    <string name="data_op_backing_up">正在导出备份…</string>
+    <string name="data_op_restoring">正在恢复备份…</string>
+    <string name="data_op_cleaning">正在清理缓存…</string>
+    <string name="data_op_repairing">正在修复服务端文件…</string>
+    <string name="data_backup_done">备份已导出</string>
+    <string name="data_restore_done">备份已恢复，重启服务后生效</string>
+    <string name="data_clean_done">缓存已清理，释放 %1$s</string>
+    <string name="data_repair_done">服务端文件已修复</string>
+    <string name="data_backup_failed">导出备份失败，请重试</string>
+    <string name="data_restore_failed">恢复失败，请确认所选为有效的备份文件</string>
+    <string name="data_clean_failed">清理缓存失败，请重试</string>
+    <string name="data_repair_failed">修复失败，请重试</string>
 
     <!-- ── 关于页 ──────────────────────────────────────────────── -->
     <string name="about_title">关于</string>
