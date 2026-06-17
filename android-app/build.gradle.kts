@@ -15,6 +15,25 @@ val appVersionCode: Int = System.getenv("ST_APP_VERSION_CODE")?.toIntOrNull() ?:
 val keystorePropsFile = rootProject.file("keystore.properties")
 val keystoreFromEnvPath: String? = System.getenv("ANDROID_KEYSTORE_PATH")?.takeIf { it.isNotBlank() }
 
+// 是否具备可用的 release keystore（决定 release 包用正式签名还是回退 debug 签名）。
+val hasReleaseKeystore = keystoreFromEnvPath != null || keystorePropsFile.exists()
+
+// 守门：缺正式 keystore 时禁止产出 release 包，避免 debug 签名冒充正式发布
+// （debug 签名的“正式版”不可信，且与后续真正签名版本签名不一致会安装失败）。
+// 配置阶段即检查请求的任务：只要请求构建 release 包（assemble/bundle Release）就中止。
+if (!hasReleaseKeystore) {
+    val releaseRequested = gradle.startParameter.taskNames.any { name ->
+        val n = name.lowercase()
+        "release" in n && ("assemble" in n || "bundle" in n)
+    }
+    if (releaseRequested) {
+        throw GradleException(
+            "正式 release 构建缺少签名 keystore：请配置 keystore.properties，或设置 " +
+                "ANDROID_KEYSTORE_PATH / ANDROID_KEYSTORE_PASSWORD / ANDROID_KEY_ALIAS / ANDROID_KEY_PASSWORD。",
+        )
+    }
+}
+
 android {
     namespace = "org.sillytavern"
     compileSdk = 36
@@ -52,9 +71,6 @@ android {
         }
     }
 
-    // 是否具备可用的 release keystore（决定 release 包用正式签名还是回退 debug 签名）
-    val hasReleaseKeystore = keystoreFromEnvPath != null || keystorePropsFile.exists()
-
     buildTypes {
         debug {
             isMinifyEnabled = false
@@ -89,7 +105,8 @@ android {
     }
 
     // ★ 关键：node 必须以真实 .so 文件落到 nativeLibraryDir 才能 exec。
-    // 配合 AndroidManifest 的 extractNativeLibs="true"。
+    // useLegacyPackaging=true 即此用途的唯一来源：AGP 会据此在合并清单写入
+    // extractNativeLibs=true，故不再在源 AndroidManifest 手写该属性（避免 AGP 告警）。
     packaging {
         jniLibs {
             useLegacyPackaging = true

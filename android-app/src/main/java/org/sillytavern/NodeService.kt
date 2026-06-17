@@ -8,6 +8,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import android.os.SystemClock
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -30,6 +31,14 @@ import java.net.HttpURLConnection
 import java.net.Inet4Address
 import java.net.NetworkInterface
 import java.net.URL
+import java.security.SecureRandom
+import java.security.cert.X509Certificate
+import javax.net.ssl.HostnameVerifier
+import javax.net.ssl.HttpsURLConnection
+import javax.net.ssl.SSLContext
+import javax.net.ssl.SSLSocketFactory
+import javax.net.ssl.TrustManager
+import javax.net.ssl.X509TrustManager
 
 /**
  * 前台服务：管理内置 Node 进程的生命周期（实现方案 §5）。
@@ -43,6 +52,7 @@ class NodeService : Service() {
 
     @Volatile private var process: Process? = null
     @Volatile private var intentionalStop = false
+    private var wakeLock: PowerManager.WakeLock? = null
 
     private lateinit var paths: AppPaths
     private val configEditor = ConfigEditor()
@@ -73,10 +83,27 @@ class NodeService : Service() {
         if (current == ServiceState.STARTING || current == ServiceState.RUNNING) return
 
         intentionalStop = false
+        // 前台服务保进程不保 CPU：息屏/Doze 下 CPU 可能被挂起，导致首启 webpack 编译停滞、
+        // 健康检查超时误判，或局域网访问无响应。持 PARTIAL_WAKE_LOCK 保活直到停止。
+        acquireWakeLock()
         NodeRuntime.setState(ServiceState.STARTING)
         // 必须在 startForegroundService 后 5 秒内 startForeground。
         startForegroundCompat(buildNotification(ServiceState.STARTING, getString(R.string.notification_starting_title)))
         scope.launch { runNode() }
+    }
+
+    private fun acquireWakeLock() {
+        if (wakeLock?.isHeld == true) return
+        val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+        wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, WAKELOCK_TAG).apply {
+            setReferenceCounted(false)
+            acquire()
+        }
+    }
+
+    private fun releaseWakeLock() {
+        wakeLock?.takeIf { it.isHeld }?.release()
+        wakeLock = null
     }
 
     private suspend fun runNode() {
@@ -208,6 +235,12 @@ class NodeService : Service() {
                 readTimeout = 1500
                 requestMethod = "GET"
                 instanceFollowRedirects = false
+                // 健康检查目标恒为本机回环（见 ConfigEditor.healthCheckUrl）；SillyTavern 启用 SSL 时
+                // 使用自签证书，这里仅对该回环连接放宽校验，不影响出站请求的证书验证。
+                if (this is HttpsURLConnection) {
+                    sslSocketFactory = trustAllSocketFactory
+                    hostnameVerifier = HostnameVerifier { _, _ -> true }
+                }
             }
             try {
                 val code = conn.responseCode
@@ -218,6 +251,16 @@ class NodeService : Service() {
         } catch (_: Exception) {
             false
         }
+    }
+
+    /** 仅用于本机回环自签 TLS 健康检查的「信任全部」工厂（连接目标已限定回环，故安全）。 */
+    private val trustAllSocketFactory: SSLSocketFactory by lazy {
+        val trustAll = arrayOf<TrustManager>(object : X509TrustManager {
+            override fun checkClientTrusted(chain: Array<X509Certificate>?, authType: String?) = Unit
+            override fun checkServerTrusted(chain: Array<X509Certificate>?, authType: String?) = Unit
+            override fun getAcceptedIssuers(): Array<X509Certificate> = emptyArray()
+        })
+        SSLContext.getInstance("TLS").apply { init(null, trustAll, SecureRandom()) }.socketFactory
     }
 
     /** 轮询等待 config.yaml 出现（首启由 SillyTavern 按 --configPath 新建），最多 CONFIG_WAIT_MS。 */
@@ -245,6 +288,7 @@ class NodeService : Service() {
             if (proc.isAlive) proc.destroyForcibly()
         }
         process = null
+        releaseWakeLock()
 
         NodeRuntime.setState(ServiceState.STOPPED)
         NodeRuntime.appendLog("[shell] 服务已停止")
@@ -255,6 +299,7 @@ class NodeService : Service() {
     private fun failTo(title: String) {
         NodeRuntime.setState(ServiceState.ERROR)
         process = null
+        releaseWakeLock()
         updateNotification(buildNotification(ServiceState.ERROR, title))
         // 错误状态保留通知供用户查看，但不再保活前台。
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
@@ -345,12 +390,14 @@ class NodeService : Service() {
         scope.cancel()
         process?.let { if (it.isAlive) it.destroyForcibly() }
         process = null
+        releaseWakeLock()
         super.onDestroy()
     }
 
     companion object {
         const val CHANNEL_ID = "node_service"
         private const val NOTIF_ID = 1001
+        private const val WAKELOCK_TAG = "SillyTavern:NodeService"
 
         const val ACTION_START = "org.sillytavern.action.START"
         const val ACTION_STOP = "org.sillytavern.action.STOP"

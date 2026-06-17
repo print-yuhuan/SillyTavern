@@ -8,6 +8,7 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.net.Uri
+import android.net.http.SslError
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
@@ -18,6 +19,7 @@ import android.view.View
 import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
 import android.webkit.PermissionRequest
+import android.webkit.SslErrorHandler
 import android.webkit.URLUtil
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
@@ -86,7 +88,9 @@ class WebViewActivity : ComponentActivity() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
         // 允许桌面 Chrome 通过 chrome://inspect 远程调试 SillyTavern 前端。
-        WebView.setWebContentsDebuggingEnabled(true)
+        // 仅在 debug 构建开启：发行版若开启，任何能访问 WebView devtools 的进程/ADB 即可
+        // 读取 SillyTavern 的 API 密钥、访问密码与全部聊天记录。
+        WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
 
         val url = intent.getStringExtra(EXTRA_URL)
         if (url.isNullOrBlank()) {
@@ -116,6 +120,23 @@ class WebViewActivity : ComponentActivity() {
 
                 override fun onPageFinished(view: WebView?, u: String?) {
                     injectThemeColorWatcher()
+                }
+
+                // 受信边界落地：仅本机回环留在内置 WebView；外部 URL 交系统浏览器，
+                // 避免 STAndroid JS 桥被导航到的远端页面调用。
+                override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+                    val uri = request?.url ?: return false
+                    if (!isTrustedLocalUrl(uri)) {
+                        runCatching { startActivity(Intent(Intent.ACTION_VIEW, uri)) }
+                        return true
+                    }
+                    return false
+                }
+
+                // SillyTavern 启用 HTTPS 时使用自签证书：仅对本机回环放行，其余一律取消。
+                override fun onReceivedSslError(view: WebView?, handler: SslErrorHandler, error: SslError?) {
+                    val host = runCatching { Uri.parse(error?.url ?: "").host }.getOrNull()
+                    if (host in TRUSTED_LOCAL_HOSTS) handler.proceed() else handler.cancel()
                 }
 
                 override fun onReceivedError(
@@ -194,6 +215,12 @@ class WebViewActivity : ComponentActivity() {
             setOnClickListener { onClick() }
             iconButtons.add(this)
         }
+
+    /** 是否为本机回环且 http(s) 的可信地址（决定是否留在内置 WebView 内加载）。 */
+    private fun isTrustedLocalUrl(uri: Uri): Boolean {
+        val host = uri.host ?: return false
+        return uri.scheme?.lowercase() in setOf("http", "https") && host in TRUSTED_LOCAL_HOSTS
+    }
 
     /** Android 15 强制 edge-to-edge：把系统栏/输入法内边距加到根视图，内容不被系统栏遮挡。 */
     private fun applyInsets() {
@@ -407,12 +434,20 @@ class WebViewActivity : ComponentActivity() {
         null
     }
 
+    /** 文件名净化：去掉路径成分并替换非法字符。下载桥可被页面内任意脚本调用，文件名不可信，
+     *  否则 API 28 的 `File(dir, fileName)` 会被 `../` 穿越出下载目录。 */
+    private fun sanitizeFileName(name: String): String =
+        File(name.ifBlank { "download" }).name
+            .replace(Regex("[\\\\/:*?\"<>|]"), "_")
+            .ifBlank { "download" }
+
     /** 把字节写入公共下载目录（API 29+ 走 MediaStore，无需权限；API 28 落 App 外部下载目录）。 */
     private fun saveToDownloads(bytes: ByteArray, fileName: String, mime: String?) {
+        val safeName = sanitizeFileName(fileName)
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 val values = ContentValues().apply {
-                    put(MediaStore.Downloads.DISPLAY_NAME, fileName)
+                    put(MediaStore.Downloads.DISPLAY_NAME, safeName)
                     if (!mime.isNullOrBlank()) put(MediaStore.Downloads.MIME_TYPE, mime)
                     put(MediaStore.Downloads.IS_PENDING, 1)
                 }
@@ -427,9 +462,9 @@ class WebViewActivity : ComponentActivity() {
                 )
             } else {
                 val dir = getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
-                File(dir, fileName).writeBytes(bytes)
+                File(dir, safeName).writeBytes(bytes)
             }
-            toastMain(getString(R.string.web_download_started, fileName))
+            toastMain(getString(R.string.web_download_started, safeName))
         } catch (_: Exception) {
             toastMain(getString(R.string.web_download_failed))
         }
@@ -451,6 +486,9 @@ class WebViewActivity : ComponentActivity() {
     companion object {
         private const val MATCH = LinearLayout.LayoutParams.MATCH_PARENT
         private const val WRAP = LinearLayout.LayoutParams.WRAP_CONTENT
+
+        /** 内置 WebView 仅信任本机回环；其余 URL 交系统浏览器、自签 SSL 仅对其放行。 */
+        private val TRUSTED_LOCAL_HOSTS = setOf("127.0.0.1", "localhost", "::1")
 
         const val EXTRA_URL = "extra_url"
 

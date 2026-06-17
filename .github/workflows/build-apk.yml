@@ -161,20 +161,20 @@ jobs:
           ST_APP_VERSION_CODE: ${{ github.run_number }}
         run: bash packaging/package-sillytavern.sh
 
-      - name: 准备签名 keystore（仅 release，且已配置 secret）
+      - name: 准备签名 keystore（仅 release，必须已配置 secret）
         id: signing
         if: steps.vars.outputs.is_release == 'true'
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: |
           set -eu
-          if [[ -n "${ANDROID_KEYSTORE_BASE64:-}" ]]; then
-            echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.keystore"
-            echo "keystore_path=$RUNNER_TEMP/release.keystore" >> "$GITHUB_OUTPUT"
-            echo "已解码 release keystore"
-          else
-            echo "::warning::未配置 ANDROID_KEYSTORE_BASE64，release 包将回退 debug 签名（仅用于验证，勿作正式发布）。"
+          if [[ -z "${ANDROID_KEYSTORE_BASE64:-}" ]]; then
+            echo "::error::正式 release 必须配置 ANDROID_KEYSTORE_BASE64，拒绝产出 debug 签名的发布包。"
+            exit 1
           fi
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+          echo "keystore_path=$RUNNER_TEMP/release.keystore" >> "$GITHUB_OUTPUT"
+          echo "已解码 release keystore"
 
       - name: 赋予 gradlew 可执行权限
         run: chmod +x ./gradlew

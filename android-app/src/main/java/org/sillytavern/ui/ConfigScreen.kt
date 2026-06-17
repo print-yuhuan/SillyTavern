@@ -118,7 +118,9 @@ fun ConfigScreen(onBack: () -> Unit) {
         val portError = port == null || port !in 1..65535
         val ipv4Error = f.listen && !ConfigEditor.isValidIpv4(f.listenAddressIpv4.trim())
         val basicAuthError = f.basicAuthMode && (f.basicAuthUsername.isBlank() || f.basicAuthPassword.isBlank())
-        val valid = !portError && !ipv4Error && !basicAuthError
+        // 至少启用一种协议，否则 Node 无可用监听、App 也无从探活/加载。
+        val protocolError = !f.protocolIpv4 && !f.protocolIpv6
+        val valid = !portError && !ipv4Error && !basicAuthError && !protocolError
 
         // ── 基础 ──
         Card(modifier = Modifier.fillMaxWidth()) {
@@ -143,6 +145,13 @@ fun ConfigScreen(onBack: () -> Unit) {
                 )
                 SwitchRow(stringResource(R.string.cfg_ipv4), f.protocolIpv4) { form = f.copy(protocolIpv4 = it) }
                 SwitchRow(stringResource(R.string.cfg_ipv6), f.protocolIpv6) { form = f.copy(protocolIpv6 = it) }
+                if (protocolError) {
+                    Text(
+                        stringResource(R.string.cfg_protocol_error),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
                 SwitchRow(stringResource(R.string.cfg_https), f.sslEnabled) { form = f.copy(sslEnabled = it) }
                 SwitchRow(stringResource(R.string.cfg_whitelist), f.whitelistMode) { form = f.copy(whitelistMode = it) }
                 SwitchRow(stringResource(R.string.cfg_basic_auth), f.basicAuthMode) { form = f.copy(basicAuthMode = it) }

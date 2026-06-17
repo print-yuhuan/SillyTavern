@@ -143,6 +143,7 @@
     <string name="cfg_save_failed">保存失败，请重试</string>
     <string name="cfg_port_error">端口必须在 1 到 65535 之间</string>
     <string name="cfg_ipv4_error">IPv4 地址格式不正确</string>
+    <string name="cfg_protocol_error">至少需启用 IPv4 或 IPv6 其中一种</string>
     <string name="cfg_basic_auth_error">启用访问密码后，账号和密码不能为空</string>
     <string name="cfg_restart_title">需重启生效</string>
     <string name="cfg_restart_msg">配置已保存，重启服务后生效。立即重启？</string>

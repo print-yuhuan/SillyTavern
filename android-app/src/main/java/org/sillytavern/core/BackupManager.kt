@@ -298,14 +298,15 @@ object BackupManager {
     private fun swapDir(staged: File, live: File): Boolean {
         if (!staged.exists()) return true
         val backup = File(live.parentFile, "${live.name}.bak")
-        if (backup.exists()) backup.deleteRecursively()
+        if (backup.exists() && !backup.deleteRecursively()) return false
+
         val hadLive = live.exists()
-        if (hadLive && !live.renameTo(backup)) {
-            // 个别文件系统 rename 失败：退化为直接删除（已有 staged 兜底）。
-            if (!live.deleteRecursively()) return false
-        }
+        // 关键：没有成功把现有数据改名为 .bak 就绝不删除它——否则一旦换入再失败，
+        // 旧数据已丢且无从回滚（恢复是不可撤销操作，必须守住这条边界）。
+        if (hadLive && !live.renameTo(backup)) return false
+
         if (!staged.renameTo(live)) {
-            if (hadLive && backup.exists()) backup.renameTo(live)
+            if (hadLive && backup.exists()) backup.renameTo(live) // 回滚到原数据
             return false
         }
         if (backup.exists()) backup.deleteRecursively()

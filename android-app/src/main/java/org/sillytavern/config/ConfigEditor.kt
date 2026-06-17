@@ -220,20 +220,18 @@ class ConfigEditor {
         const val DEFAULT_PORT = 8000
 
         /**
-         * 健康检查（App 内部探活 + WebView 加载）地址，逻辑对齐上游 command-line.js#getIPv4ListenUrl：
-         * - listen=false → 127.0.0.1
-         * - listen=true 且 ipv4 合法 → 该 IP；非法回落 0.0.0.0
-         * - 0.0.0.0 只能绑定不能访问，App 内探活统一改用 127.0.0.1
+         * App 内探活 + WebView 加载地址：**恒为本机回环**，与对外绑定地址解耦。
+         *
+         * 之前用对外绑定 IP 会导致两类“服务正常却被误判失败”：
+         * - 绑定具体局域网 IP（如 192.168.x.x）时，明文请求被 network_security_config 拦截；
+         * - 仅启用 IPv6 时，回落到 IPv4 绑定地址不可达。
+         * 本机一律走回环即可探活与加载；对外可达性由 [lanAccessEnabled] 单独表达。
          */
         fun healthCheckUrl(config: STConfig?): String {
             val c = config ?: STConfig()
             val scheme = if (c.sslEnabled) "https" else "http"
-            val bind = if (c.listen) {
-                if (isValidIpv4(c.listenAddressIpv4)) c.listenAddressIpv4 else "0.0.0.0"
-            } else {
-                "127.0.0.1"
-            }
-            val host = if (bind == "0.0.0.0") "127.0.0.1" else bind
+            // 仅启用 IPv6（关闭 IPv4）时走 [::1]；否则一律 127.0.0.1（默认 IPv4 / 双栈）。
+            val host = if (!c.protocolIpv4 && c.protocolIpv6) "[::1]" else "127.0.0.1"
             return "$scheme://$host:${c.port}"
         }
 
