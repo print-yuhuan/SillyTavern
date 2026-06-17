@@ -3,6 +3,9 @@ package org.sillytavern.config
 import org.yaml.snakeyaml.DumperOptions
 import org.yaml.snakeyaml.Yaml
 import java.io.File
+import java.nio.file.AtomicMoveNotSupportedException
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 
 /**
  * config.yaml 的结构化读写（实现方案 §7，第六阶段接管范围）。
@@ -128,10 +131,23 @@ class ConfigEditor {
             file.parentFile?.mkdirs()
             val tmp = File(file.parentFile, "${file.name}.tmp")
             tmp.writeText(text, Charsets.UTF_8)
-            if (!tmp.renameTo(file)) {
-                // 个别文件系统 rename 失败时回退直接写
-                file.writeText(text, Charsets.UTF_8)
-                tmp.delete()
+            try {
+                Files.move(
+                    tmp.toPath(), file.toPath(),
+                    StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE,
+                )
+            } catch (_: AtomicMoveNotSupportedException) {
+                // 不支持原子移动时退化为「先备份再换入」，绝不直接覆盖写半截损坏现有配置。
+                val bak = File(file.parentFile, "${file.name}.bak")
+                if (file.exists() && !file.renameTo(bak)) {
+                    tmp.delete()
+                    return false
+                }
+                if (!tmp.renameTo(file)) {
+                    if (bak.exists()) bak.renameTo(file) // 回滚
+                    return false
+                }
+                bak.delete()
             }
             // 写后重读校验：能解析即认为成功
             loadRoot(file) != null

@@ -80,7 +80,9 @@ class NodeService : Service() {
 
     private fun handleStart() {
         val current = NodeRuntime.state.value
-        if (current == ServiceState.STARTING || current == ServiceState.RUNNING) return
+        // STOPPING 期间不可启动：避免旧进程未退出就拉起新进程造成端口冲突。
+        // 重启流程由调用方等待 STOPPED 后再 start（见 ConfigScreen 重启/恢复默认）。
+        if (current == ServiceState.STARTING || current == ServiceState.RUNNING || current == ServiceState.STOPPING) return
 
         intentionalStop = false
         // 前台服务保进程不保 CPU：息屏/Doze 下 CPU 可能被挂起，导致首启 webpack 编译停滞、
@@ -150,7 +152,14 @@ class NodeService : Service() {
             pb.environment().apply {
                 put("HOME", paths.filesDir.absolutePath)
                 put("TMPDIR", paths.nodeTmpDir.absolutePath)
-                put("PATH", paths.nativeLibDir.absolutePath)
+                // 把 nativeLibDir 前置到 PATH 而非覆盖，保留系统 PATH，
+                // 以便 SillyTavern 部分功能/扩展能找到 git、ffmpeg 等子进程命令。
+                val existingPath = get("PATH")
+                put(
+                    "PATH",
+                    if (existingPath.isNullOrEmpty()) paths.nativeLibDir.absolutePath
+                    else "${paths.nativeLibDir.absolutePath}:$existingPath",
+                )
                 // 让动态链接器在 nativeLibraryDir 找到 libnode.so 依赖的 libc++_shared.so。
                 val existingLdPath = get("LD_LIBRARY_PATH")
                 put(

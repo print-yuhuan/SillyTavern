@@ -28,16 +28,17 @@ fi
 echo "==> npm ci --omit=dev"
 ( cd "$ST_DIR" && npm ci --omit=dev )
 
-# 2) 扫描 .node 原生模块（每次都扫描并产出日志）
+# 2) 扫描 .node 原生模块（每次都扫描并产出日志）；发现未处理的原生模块直接失败，
+#    避免把宿主架构的 .node 静默打入 APK，导致真机 arm64 require 时崩溃（构建期不可见）。
 echo "==> 扫描 .node 原生模块"
 node_addons="$(find "$ST_DIR/node_modules" -name '*.node' 2>/dev/null || true)"
-if [[ -n "$node_addons" ]]; then
-  echo "::warning::发现 .node 原生模块，需交叉编译为 lib*.so 并修正加载路径："
-  echo "$node_addons"
-else
-  echo "未发现 .node 原生模块。"
-fi
 echo "$node_addons" > "$ROOT/packaging/native-addons-scan.txt"
+if [[ -n "$node_addons" ]]; then
+  echo "::error::发现 .node 原生模块，当前 Android 打包链路尚未支持（需交叉编译为 lib*.so 并修正加载路径）："
+  echo "$node_addons"
+  exit 1
+fi
+echo "未发现 .node 原生模块。"
 
 # 3) 打包运行必需源码 → sillytavern-code.zip（排除 .git/.github/测试/开发产物）
 echo "==> 打包 sillytavern-code.zip"

@@ -3,6 +3,7 @@ package org.sillytavern.ui
 import android.content.Context
 import android.net.Uri
 import android.text.format.Formatter
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -72,7 +73,8 @@ fun DataScreen(onBack: () -> Unit) {
     val paths = remember { AppPaths(context) }
 
     val serviceState by NodeRuntime.state.collectAsStateWithLifecycle()
-    val running = serviceState == ServiceState.RUNNING || serviceState == ServiceState.STARTING
+    // 运行中（含启动/停止过渡态）：破坏性操作前需先停服并等待真正 STOPPED。
+    val running = serviceState != ServiceState.STOPPED && serviceState != ServiceState.ERROR
     val op by BackupManager.state.collectAsStateWithLifecycle()
     val busy = op.phase == BackupManager.Phase.RUNNING
 
@@ -93,24 +95,39 @@ fun DataScreen(onBack: () -> Unit) {
     val computed = sizes.data >= 0L
     val hasData = (sizes.data > 0) || (sizes.config > 0)
 
+    var pendingExport by remember { mutableStateOf<Uri?>(null) }
     var pendingImport by remember { mutableStateOf<Uri?>(null) }
     var showRepair by remember { mutableStateOf(false) }
     var showClean by remember { mutableStateOf(false) }
 
     val exportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument(BACKUP_MIME),
-    ) { uri -> if (uri != null) scope.launch { BackupManager.exportBackup(context, uri) } }
+    ) { uri ->
+        if (uri != null) {
+            // 运行中导出可能打入正在写入的文件：先确认并停服，保证备份一致。
+            if (running) pendingExport = uri
+            else scope.launch { BackupManager.exportBackup(context, uri) }
+        }
+    }
 
     val importLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument(),
     ) { uri -> if (uri != null) pendingImport = uri }
 
-    // 破坏性/涉运行文件的操作统一封装：运行中先停服并等待 STOPPED，再执行。
+    // 破坏性/涉运行文件的操作统一封装：运行中先停服并等待真正 STOPPED 再执行；
+    // 超时则中止操作，避免与仍在运行的 Node 并发读写造成数据损坏。
     fun runStopped(block: suspend () -> Unit) {
         scope.launch {
-            if (running) {
-                NodeService.stop(context)
-                withTimeoutOrNull(8_000) { NodeRuntime.state.first { it == ServiceState.STOPPED } }
+            val s = NodeRuntime.state.value
+            if (s != ServiceState.STOPPED && s != ServiceState.ERROR) {
+                if (s != ServiceState.STOPPING) NodeService.stop(context)
+                val reached = withTimeoutOrNull(15_000) {
+                    NodeRuntime.state.first { it == ServiceState.STOPPED || it == ServiceState.ERROR }
+                }
+                if (reached == null) {
+                    Toast.makeText(context, R.string.data_stop_timeout, Toast.LENGTH_LONG).show()
+                    return@launch
+                }
             }
             block()
         }
@@ -197,6 +214,19 @@ fun DataScreen(onBack: () -> Unit) {
         }
 
         Spacer(Modifier.size(8.dp))
+    }
+
+    // ── 导出确认（运行中：先停服保证一致） ──
+    pendingExport?.let { uri ->
+        ConfirmDialog(
+            title = stringResource(R.string.data_export),
+            message = stringResource(R.string.data_export_stop_hint),
+            onConfirm = {
+                pendingExport = null
+                runStopped { BackupManager.exportBackup(context, uri) }
+            },
+            onDismiss = { pendingExport = null },
+        )
     }
 
     // ── 恢复确认（破坏性） ──

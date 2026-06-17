@@ -38,7 +38,6 @@
     <string name="action_open_web">打开界面</string>
     <string name="action_edit_config">修改配置</string>
     <string name="action_view_logs">查看日志</string>
-    <string name="action_check_update">检查更新</string>
     <string name="action_backup">备份 / 恢复</string>
     <string name="action_about">关于</string>
 
@@ -149,6 +148,8 @@
     <string name="cfg_restart_msg">配置已保存，重启服务后生效。立即重启？</string>
     <string name="cfg_restart_now">立即重启</string>
     <string name="cfg_restart_later">稍后</string>
+    <string name="cfg_restart_timeout">停止服务超时，未能重启，请稍后重试</string>
+    <string name="cfg_stop_timeout">停止服务超时，请稍后重试</string>
     <string name="cfg_restore_title">恢复默认配置</string>
     <string name="cfg_restore_msg">将删除当前配置；下次启动服务时由 SillyTavern 重建默认配置。确定恢复？</string>
     <string name="cfg_restored">已恢复，重启服务后由 SillyTavern 重建默认配置</string>
@@ -179,6 +180,8 @@
     <string name="data_clean_desc">删除临时文件与可再生缓存，释放存储空间；下次启动可能稍慢。</string>
     <!-- 确认弹窗 -->
     <string name="data_stop_hint">该操作需要先停止服务，确认后将自动停止再继续。</string>
+    <string name="data_stop_timeout">停止服务超时，请稍后重试</string>
+    <string name="data_export_stop_hint">服务正在运行。为保证导出数据一致，将先停止服务再导出。确定继续？</string>
     <string name="data_restore_confirm_title">从备份恢复</string>
     <string name="data_restore_confirm_msg">恢复将覆盖当前的配置和聊天数据，且无法撤销。建议先导出当前数据。确定恢复？</string>
     <string name="data_repair_confirm_title">修复服务端文件</string>

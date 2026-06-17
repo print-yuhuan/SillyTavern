@@ -73,7 +73,7 @@ fun ConfigScreen(onBack: () -> Unit) {
     val paths = remember { AppPaths(context) }
 
     val serviceState by NodeRuntime.state.collectAsStateWithLifecycle()
-    val running = serviceState == ServiceState.RUNNING || serviceState == ServiceState.STARTING
+    val running = serviceState != ServiceState.STOPPED && serviceState != ServiceState.ERROR
 
     var form by remember { mutableStateOf<ConfigEditor.STConfig?>(null) }
     var loaded by remember { mutableStateOf(false) }
@@ -292,9 +292,16 @@ fun ConfigScreen(onBack: () -> Unit) {
                 TextButton(onClick = {
                     showRestart = false
                     scope.launch {
-                        NodeService.stop(context)
-                        withTimeoutOrNull(8000) { NodeRuntime.state.first { it == ServiceState.STOPPED } }
-                        NodeService.start(context)
+                        val s = NodeRuntime.state.value
+                        if (s != ServiceState.STOPPED && s != ServiceState.ERROR && s != ServiceState.STOPPING) {
+                            NodeService.stop(context)
+                        }
+                        // 必须等到真正停止再启动，否则旧进程未退出会与新进程争抢端口。
+                        val reached = withTimeoutOrNull(15_000) {
+                            NodeRuntime.state.first { it == ServiceState.STOPPED || it == ServiceState.ERROR }
+                        }
+                        if (reached != null) NodeService.start(context)
+                        else Toast.makeText(context, R.string.cfg_restart_timeout, Toast.LENGTH_LONG).show()
                     }
                 }) { Text(stringResource(R.string.cfg_restart_now)) }
             },
@@ -315,8 +322,15 @@ fun ConfigScreen(onBack: () -> Unit) {
                     showRestore = false
                     scope.launch {
                         if (running) {
-                            NodeService.stop(context)
-                            withTimeoutOrNull(8000) { NodeRuntime.state.first { it == ServiceState.STOPPED } }
+                            val s = NodeRuntime.state.value
+                            if (s != ServiceState.STOPPING) NodeService.stop(context)
+                            val reached = withTimeoutOrNull(15_000) {
+                                NodeRuntime.state.first { it == ServiceState.STOPPED || it == ServiceState.ERROR }
+                            }
+                            if (reached == null) {
+                                Toast.makeText(context, R.string.cfg_stop_timeout, Toast.LENGTH_LONG).show()
+                                return@launch
+                            }
                         }
                         withContext(Dispatchers.IO) { paths.configFile.delete() }
                         form = null

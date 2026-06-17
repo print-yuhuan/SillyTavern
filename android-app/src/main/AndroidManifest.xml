@@ -13,9 +13,6 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" /> <!-- API 33 -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
-    <!-- 应用内自更新（下载并安装新版 APK） -->
-    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
-
     <!-- TTS/STT 麦克风（可选） -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
 

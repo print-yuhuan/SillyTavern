@@ -107,8 +107,9 @@ class WebViewActivity : ComponentActivity() {
                 javaScriptEnabled = true
                 domStorageEnabled = true
                 databaseEnabled = true
-                allowFileAccess = true
-                allowContentAccess = true
+                // 页面恒经 http://127.0.0.1 加载，无需 file://、content:// 访问；关闭以收敛攻击面。
+                allowFileAccess = false
+                allowContentAccess = false
                 mediaPlaybackRequiresUserGesture = false
                 javaScriptCanOpenWindowsAutomatically = true
                 // 不设 useWideViewPort/loadWithOverviewMode：布局视口=视图边界，避免 100vh/innerHeight 错乱。
