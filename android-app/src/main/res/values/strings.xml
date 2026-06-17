@@ -61,9 +61,6 @@
     <string name="web_download_failed">下载失败</string>
     <string name="web_download_unsupported">暂不支持的下载链接类型</string>
 
-    <!-- ── M0 真机验证说明 ─────────────────────────────────────── -->
-    <string name="m0_banner">M0 验证版：仅验证内置 Node 能否在真机从 nativeLibraryDir 启动并联通本机端口</string>
-
     <!-- ── 通用提示 ────────────────────────────────────────────── -->
     <string name="msg_start_failed">服务启动失败，请查看日志</string>
     <string name="msg_node_missing">未找到内置 Node（libnode.so），该 APK 可能未正确打包</string>

@@ -145,7 +145,9 @@ class WebViewActivity : ComponentActivity() {
                     request: WebResourceRequest?,
                     error: WebResourceError?,
                 ) {
-                    if (request?.isForMainFrame == true) {
+                    // 仅当本机主页面加载失败才提示：子资源失败、外链(已交系统浏览器)与瞬时抖动不报错。
+                    val uri = request?.url
+                    if (request?.isForMainFrame == true && uri?.host in TRUSTED_LOCAL_HOSTS) {
                         Toast.makeText(this@WebViewActivity, R.string.web_load_error, Toast.LENGTH_LONG).show()
                     }
                 }

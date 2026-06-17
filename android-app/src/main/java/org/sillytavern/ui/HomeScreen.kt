@@ -148,7 +148,8 @@ private fun InstallBanner(state: AssetInstaller.InstallState) {
 
 @Composable
 private fun StatusCard(state: ServiceState, url: String?, lanUrl: String?, runningSince: Long?) {
-    val (label, color) = state.labelAndColor()
+    val color = state.statusColor()
+    val label = stringResource(state.labelRes())
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -318,12 +319,20 @@ private fun RecentLogsCard(logs: List<String>, onOpenLogs: () -> Unit) {
     }
 }
 
-private fun ServiceState.labelAndColor(): Pair<String, Color> = when (this) {
-    ServiceState.STOPPED -> "已停止" to status_stopped
-    ServiceState.STARTING -> "启动中" to status_starting
-    ServiceState.RUNNING -> "运行中" to status_running
-    ServiceState.STOPPING -> "停止中" to status_starting
-    ServiceState.ERROR -> "出错" to status_error
+private fun ServiceState.statusColor(): Color = when (this) {
+    ServiceState.STOPPED -> status_stopped
+    ServiceState.STARTING -> status_starting
+    ServiceState.RUNNING -> status_running
+    ServiceState.STOPPING -> status_starting
+    ServiceState.ERROR -> status_error
+}
+
+private fun ServiceState.labelRes(): Int = when (this) {
+    ServiceState.STOPPED -> R.string.state_stopped
+    ServiceState.STARTING -> R.string.state_starting
+    ServiceState.RUNNING -> R.string.state_running
+    ServiceState.STOPPING -> R.string.state_stopping
+    ServiceState.ERROR -> R.string.state_error
 }
 
 private fun formatUptime(ms: Long): String {

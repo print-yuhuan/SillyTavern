@@ -49,10 +49,6 @@ class AppPaths(context: Context) {
     /** 传给 Node 的可写临时目录（TMPDIR） */
     val nodeTmpDir: File = File(cacheDir, "node-tmp")
 
-    // ── M0 真机 PoC 专用：最小测试服务（非完整 SillyTavern） ──────────────
-    val m0Dir: File = File(filesDir, "m0")
-    val m0ServerJs: File = File(m0Dir, "server.js")
-
     /** 内置 Node 是否存在且具备可执行位。 */
     fun nodeBinReady(): Boolean = nodeBin.exists() && nodeBin.canExecute()
 

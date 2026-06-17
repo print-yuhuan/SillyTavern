@@ -1,6 +1,7 @@
-# 当前 release 未开启代码压缩（isMinifyEnabled = false），此文件预留。
-# 若后续开启 R8/混淆，需为 snakeyaml 反射与 Compose 增补 keep 规则。
+# Release 开启 R8 代码压缩/资源压缩/混淆（isMinifyEnabled = true）。
+# Compose / AndroidX / kotlinx-coroutines 由各自随库分发的 consumer 规则覆盖；
+# Activity/Service 由 Manifest keep 规则保留。此处仅需补 snakeyaml。
 
-# snakeyaml 通过反射构造对象
+# snakeyaml 通过反射构造/内省对象，保留以保证 config.yaml 读写不被破坏。
 -keep class org.yaml.snakeyaml.** { *; }
 -dontwarn org.yaml.snakeyaml.**

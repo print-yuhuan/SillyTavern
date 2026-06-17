@@ -78,8 +78,8 @@ android {
             versionNameSuffix = "-debug"
         }
         release {
-            isMinifyEnabled = false
-            isShrinkResources = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = if (hasReleaseKeystore) {
                 signingConfigs.getByName("release")
@@ -122,8 +122,11 @@ android {
     }
 
     lint {
-        abortOnError = false
-        checkReleaseBuilds = false
+        abortOnError = true
+        checkReleaseBuilds = true
+        // ProduceStateDoesNotAssignValue 对“在 if/while/withContext 内赋值 value”的 producer 误报；
+        // 本项目 DataScreen/HomeScreen 两处均已正确赋值，禁用该单项误报检查，其余检查仍为强制门禁。
+        disable += "ProduceStateDoesNotAssignValue"
     }
 }
 
@@ -145,4 +148,6 @@ dependencies {
 
     implementation(libs.snakeyaml)
     implementation(libs.kotlinx.coroutines.android)
+
+    testImplementation(libs.junit)
 }

@@ -33,6 +33,7 @@ import java.net.NetworkInterface
 import java.net.URL
 import java.security.SecureRandom
 import java.security.cert.X509Certificate
+import java.util.concurrent.atomic.AtomicBoolean
 import javax.net.ssl.HostnameVerifier
 import javax.net.ssl.HttpsURLConnection
 import javax.net.ssl.SSLContext
@@ -43,8 +44,7 @@ import javax.net.ssl.X509TrustManager
 /**
  * 前台服务：管理内置 Node 进程的生命周期（实现方案 §5）。
  *
- * M0 阶段运行最小测试服务 assets/m0-server.js，验证「真机能否从 nativeLibraryDir 执行内置 Node」。
- * 第四阶段起改为以 server.js + --configPath + --dataRoot 启动完整 SillyTavern。
+ * 以 server.js + --configPath + --dataRoot 启动完整 SillyTavern。
  */
 class NodeService : Service() {
 
@@ -53,6 +53,9 @@ class NodeService : Service() {
     @Volatile private var process: Process? = null
     @Volatile private var intentionalStop = false
     private var wakeLock: PowerManager.WakeLock? = null
+
+    /** 本次运行是否已进入终态：确保进程退出与健康检查失败不会重复触发 [failTo]。 */
+    private val terminated = AtomicBoolean(false)
 
     private lateinit var paths: AppPaths
     private val configEditor = ConfigEditor()
@@ -85,6 +88,7 @@ class NodeService : Service() {
         if (current == ServiceState.STARTING || current == ServiceState.RUNNING || current == ServiceState.STOPPING) return
 
         intentionalStop = false
+        terminated.set(false)
         // 前台服务保进程不保 CPU：息屏/Doze 下 CPU 可能被挂起，导致首启 webpack 编译停滞、
         // 健康检查超时误判，或局域网访问无响应。持 PARTIAL_WAKE_LOCK 保活直到停止。
         acquireWakeLock()
@@ -283,6 +287,7 @@ class NodeService : Service() {
 
     private suspend fun stopNode() {
         intentionalStop = true
+        terminated.set(true) // 主动停止即终态，杜绝退出回调再翻转为 ERROR
         NodeRuntime.setState(ServiceState.STOPPING)
         updateNotification(buildNotification(ServiceState.STOPPING, getString(R.string.notification_stopping_title)))
 
@@ -306,6 +311,8 @@ class NodeService : Service() {
     }
 
     private fun failTo(title: String) {
+        // 进程退出(awaitExit)与健康检查失败(pollHealth)可能同时到达，只允许首个进入终态。
+        if (!terminated.compareAndSet(false, true)) return
         NodeRuntime.setState(ServiceState.ERROR)
         process = null
         releaseWakeLock()
