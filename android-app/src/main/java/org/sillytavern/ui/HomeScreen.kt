@@ -1,8 +1,15 @@
 package org.sillytavern.ui
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
+import android.os.PowerManager
 import android.os.SystemClock
+import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -18,6 +25,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Backup
+import androidx.compose.material.icons.filled.BatteryAlert
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.OpenInBrowser
@@ -38,8 +46,12 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -51,6 +63,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.delay
 import org.sillytavern.NodeService
@@ -63,6 +78,7 @@ import org.sillytavern.ui.theme.status_error
 import org.sillytavern.ui.theme.status_running
 import org.sillytavern.ui.theme.status_starting
 import org.sillytavern.ui.theme.status_stopped
+import org.sillytavern.ui.theme.status_warning
 
 /**
  * 首页（控制台 hub，实现方案 §6）：服务状态、启动/停止、打开界面、当前 URL、
@@ -97,6 +113,7 @@ fun HomeScreen(
         ) {
             InstallBanner(installState)
             StatusCard(state = state, url = url, lanUrl = lanUrl, runningSince = runningSince)
+            BatteryOptimizationCard()
             ActionButtons(
                 state = state,
                 installing = installState.phase == AssetInstaller.Phase.EXTRACTING,
@@ -143,6 +160,49 @@ private fun InstallBanner(state: AssetInstaller.InstallState) {
             )
         }
         else -> Unit
+    }
+}
+
+/**
+ * 后台保活提示：未加入电池优化白名单时显示，引导用户一键放行（避免 Doze 下前台服务被节流/杀死）。
+ * 已在白名单则不显示。请求与回退设置页都经同一 launcher 返回时复查，外部手动更改则在 onResume 复查。
+ */
+@Composable
+private fun BatteryOptimizationCard() {
+    val context = LocalContext.current
+    var ignoring by remember { mutableStateOf(isIgnoringBatteryOptimizations(context)) }
+    val launcher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { ignoring = isIgnoringBatteryOptimizations(context) }
+
+    val owner = LocalLifecycleOwner.current
+    DisposableEffect(owner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) ignoring = isIgnoringBatteryOptimizations(context)
+        }
+        owner.lifecycle.addObserver(observer)
+        onDispose { owner.lifecycle.removeObserver(observer) }
+    }
+
+    if (ignoring) return
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Filled.BatteryAlert,
+                    contentDescription = null,
+                    tint = status_warning,
+                    modifier = Modifier.size(18.dp),
+                )
+                Spacer(Modifier.size(8.dp))
+                Text(stringResource(R.string.battery_opt_title), style = MaterialTheme.typography.titleSmall)
+            }
+            Text(stringResource(R.string.msg_battery_hint), style = MaterialTheme.typography.bodySmall)
+            Button(
+                onClick = { requestIgnoreBatteryOptimizations(context, launcher) },
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text(stringResource(R.string.action_disable_battery_opt)) }
+        }
     }
 }
 
@@ -349,4 +409,21 @@ private fun openWeb(context: Context, url: String?) {
         Intent(context, WebViewActivity::class.java)
             .putExtra(WebViewActivity.EXTRA_URL, url),
     )
+}
+
+private fun isIgnoringBatteryOptimizations(context: Context): Boolean {
+    val pm = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+    return pm.isIgnoringBatteryOptimizations(context.packageName)
+}
+
+@SuppressLint("BatteryLife")
+private fun requestIgnoreBatteryOptimizations(context: Context, launcher: ActivityResultLauncher<Intent>) {
+    // 直接弹系统「允许」对话框；个别 ROM 不支持该 Action 时回退到电池优化设置列表。
+    val direct = Intent(
+        Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+        Uri.parse("package:${context.packageName}"),
+    )
+    runCatching { launcher.launch(direct) }.onFailure {
+        runCatching { launcher.launch(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) }
+    }
 }

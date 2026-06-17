@@ -66,7 +66,9 @@
     <string name="msg_node_missing">未找到内置 Node（libnode.so），该 APK 可能未正确打包</string>
     <string name="msg_libcxx_missing">缺少 libc++_shared.so（Node 依赖的 C++ 运行库），该 APK 可能未正确打包</string>
     <string name="msg_assets_missing">SillyTavern 资产缺失或解压不完整，无法启动</string>
-    <string name="msg_battery_hint">为避免后台被系统杀死，建议为本应用关闭电池优化</string>
+    <string name="msg_battery_hint">为避免后台被系统杀死，建议将本应用加入电池优化白名单。</string>
+    <string name="battery_opt_title">后台保活建议</string>
+    <string name="action_disable_battery_opt">关闭电池优化（加入白名单）</string>
 
     <!-- ── 首启资产解压 ────────────────────────────────────────── -->
     <string name="install_preparing">正在准备 SillyTavern（首次启动需解压资产，约数十秒）…</string>
